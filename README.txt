@@ -1,0 +1,1 @@
+This is a library that can create, model, and solve figures in Euclidean Geometry.
