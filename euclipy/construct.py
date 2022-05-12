@@ -1,2 +1,2 @@
-def triangle(params):
-    return params
+def triangle(point_1="a", point_2="b", point_3="c"):
+    return (point_1, point_2, point_3) if isinstance(point_1, str) and isinstance(point_1, str) and isinstance(point_3, str) else exec("raise RuntimeError('An error occurred: input error')")
