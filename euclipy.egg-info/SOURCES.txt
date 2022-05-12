@@ -1,0 +1,11 @@
+LICENSE.txt
+MANIFEST.in
+README.txt
+setup.py
+doc/changelog/0.0.1-changelog.txt
+euclipy/__init__.py
+euclipy/construct.py
+euclipy.egg-info/PKG-INFO
+euclipy.egg-info/SOURCES.txt
+euclipy.egg-info/dependency_links.txt
+euclipy.egg-info/top_level.txt
