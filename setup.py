@@ -10,9 +10,9 @@ classifiers = [
  
 setup(
   name='euclipy',
-  version='0.0.1',
+  version='0.0.2',
   description='A Euclidean Geometry based library',
-  long_description=open('README.txt').read(),
+  long_description=open('README.md').read(),
   url='',
   author='Joshua Varon',    
   author_email='joshuavaron@gmail.com',
