@@ -1,2 +1,10 @@
 # Euclipy
-## A library used to create, model, and solve figures in Euclidean Geometry.
+### A library used to create, model, and solve figures in Euclidean Geometry.
+
+## Features:
+
+- Complete missing information found in triangles
+```sh
+# PyPi Instillation
+pip install euclipy
+```
