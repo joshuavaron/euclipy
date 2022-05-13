@@ -1,8 +1,10 @@
 LICENSE.txt
 MANIFEST.in
-README.txt
+README.md
 setup.py
 doc/changelog/0.0.1-changelog.txt
+doc/changelog/0.0.2-changelog.txt
+doc/changelog/0.0.3-changelog.txt
 euclipy/__init__.py
 euclipy/construct.py
 euclipy.egg-info/PKG-INFO

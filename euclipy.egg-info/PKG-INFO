@@ -1,11 +1,12 @@
 Metadata-Version: 2.1
 Name: euclipy
-Version: 0.0.1
+Version: 0.0.3
 Summary: A Euclidean Geometry based library
 Home-page: 
 Author: Joshua Varon
 Author-email: joshuavaron@gmail.com
 License: MIT
+Project-URL: Source Code, https://github.com/joshuavaron/euclipy
 Keywords: geometry,math
 Platform: UNKNOWN
 Classifier: Development Status :: 5 - Production/Stable
@@ -13,7 +14,9 @@ Classifier: Intended Audience :: Education
 Classifier: Operating System :: Microsoft :: Windows :: Windows 10
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python :: 3
+Description-Content-Type: text/markdown
 License-File: LICENSE.txt
 
-This is a library that can create, model, and solve figures in Euclidean Geometry.
+# Euclipy
+## A library used to create, model, and solve figures in Euclidean Geometry.
 
