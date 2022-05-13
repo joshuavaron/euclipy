@@ -1,8 +1,6 @@
 # Euclipy
 [![PyPI version](https://badge.fury.io/py/euclipy.svg)](https://badge.fury.io/py/euclipy)
-[![PyPI downloads](https://img.shields.io/pypi/dm/euclipy.svg?color=lime)](https://img.shields.io/pypi/dm/euclipy?color=lime)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/numpy.svg?label=PyPI%20downloads)](https://pypi.org/project/euclipy/)
-
+[![PyPI downloads](https://img.shields.io/pypi/dm/euclipy.svg?label=PyPI%20downloads)](https://pypi.org/project/euclipy/)
 
 ### A library used to create, model, and solve figures in Euclidean Geometry.
 ## Features:
