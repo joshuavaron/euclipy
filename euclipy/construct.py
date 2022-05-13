@@ -25,7 +25,3 @@ def solve(construction=construction):
                 figure[(index*2)+4] = 180 - sum(angles)
         else:
             pass
-
-triangle('a', 'b', 'c', 40, 120, alpha, 5, 7, undefined)
-solve()
-print(construction)
