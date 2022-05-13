@@ -1,1 +1,2 @@
-This is a library that can create, model, and solve figures in Euclidean Geometry.
+# Euclipy
+## A library used to create, model, and solve figures in Euclidean Geometry.

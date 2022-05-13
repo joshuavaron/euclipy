@@ -10,10 +10,16 @@ classifiers = [
  
 setup(
   name='euclipy',
-  version='0.0.2',
+  version='0.0.3',
   description='A Euclidean Geometry based library',
   long_description=open('README.md').read(),
+  long_description_content_type='text/markdown',
   url='',
+  project_urls={
+            #"Bug Tracker": "",
+            #"Documentation": ,
+            "Source Code": "https://github.com/joshuavaron/euclipy",
+        },
   author='Joshua Varon',    
   author_email='joshuavaron@gmail.com',
   license='MIT', 
