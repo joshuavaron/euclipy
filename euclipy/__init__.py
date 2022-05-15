@@ -1,1 +1,1 @@
-from construct import *
+from .construct import *
