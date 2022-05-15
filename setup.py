@@ -11,7 +11,7 @@ classifiers = [
  
 setup(
   name='euclipy',
-  version='0.2.3',
+  version='0.2.4',
   description='A Euclidean Geometry based library',
   long_description=open('README.md').read(),
   long_description_content_type='text/markdown',
