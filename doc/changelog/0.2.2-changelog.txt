@@ -1,0 +1,3 @@
+0.2.2 (5/15/2022)
+-------------------
+- Imported names from construct.py into euclipy namespace
