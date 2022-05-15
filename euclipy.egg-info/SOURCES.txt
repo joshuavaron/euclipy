@@ -8,9 +8,12 @@ doc/changelog/0.0.2-changelog.txt
 doc/changelog/0.0.3-changelog.txt
 doc/changelog/0.1.0-changelog.txt
 doc/changelog/0.1.1-changelog.txt
+doc/changelog/0.2.0-changelog.txt
 euclipy/__init__.py
 euclipy/construct.py
+euclipy/tests.py
 euclipy.egg-info/PKG-INFO
 euclipy.egg-info/SOURCES.txt
 euclipy.egg-info/dependency_links.txt
+euclipy.egg-info/requires.txt
 euclipy.egg-info/top_level.txt
