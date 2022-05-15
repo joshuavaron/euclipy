@@ -11,7 +11,7 @@ classifiers = [
  
 setup(
   name='euclipy',
-  version='0.2.0',
+  version='0.2.1',
   description='A Euclidean Geometry based library',
   long_description=open('README.md').read(),
   long_description_content_type='text/markdown',
@@ -27,5 +27,5 @@ setup(
   classifiers=classifiers,
   keywords='geometry, math',
   packages=find_packages(include=['euclipy']),
-  install_requires=['math'] 
+  install_requires=[''] 
 )
