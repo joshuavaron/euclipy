@@ -19,9 +19,6 @@ pip install euclipy
 ```py
 from euclipy import *
 
-import pprint
-pp = pprint.PrettyPrinter(indent=4)
-
 # Create 3 unique points
 A = Point('A')
 B = Point('B')
@@ -41,5 +38,5 @@ except:
     print('Inconsistent triangle')
     
 # Prints all created objects
-pp.pprint(Registry().entries)
+print(Registry().entries)
 ```
