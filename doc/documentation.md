@@ -1,22 +1,25 @@
-Help on module euclipy.construct in euclipy:
+# Help on module 'euclipy.construct' in euclipy:
 
-NAME
-    euclipy.construct
+## NAME
+### &nbsp;&nbsp;&nbsp;&nbsp; euclipy.construct
 
-CLASSES
-    builtins.object
-        Geometry
-            Angle
-            Point
-            Segment
-            Shape
-                Polygon
-                    Triangle
-        Measure
-            AngleMeasure
-            SegmentMeasure
-        Registry
-
+## CLASSES
+```py
+builtins.object
+    Geometry
+        Angle
+        Point
+        Segment
+        Shape
+            Polygon
+                Triangle
+    Measure
+        AngleMeasure
+        SegmentMeasure
+    Registry
+ ```
+## METHODS
+```py
     class Angle(Geometry)
      |  Angle(points: list)
      |
@@ -343,4 +346,4 @@ CLASSES
      |
      |  set_measure(self, measure: euclipy.construct.Measure) -> None
      |
-     |  ----------------------------------------------------------------------
+```
