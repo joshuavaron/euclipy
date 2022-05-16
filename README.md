@@ -10,14 +10,14 @@
 - Implicitly defines segments and angles created by polygon constructions
 - Keeps a registry of all defined objects, implicit or explicit
 
-## PyPi Installation
+## Installation
 ```sh
 # PyPi Installation
 pip install euclipy
 ```
 ## Sample Code (With Comments):
 ```py
-from euclipy import *
+from euclipy import Point, Triangle, Registry
 
 # Create 3 unique points
 A = Point('A')
