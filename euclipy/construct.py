@@ -1,10 +1,13 @@
 from collections import defaultdict
 
 class Geometry:
-    pass
+    @classmethod
+    @property
+    def _registry_key(cls):
+        return cls.__name__
 
 class Registry:
-    '''Singleton registry of measures.
+    '''Singleton registry of Geometry instances (GeometricObjects and GeometricMeasures).
     '''
     def __new__(cls):
         '''entries is a dictionary with:
@@ -63,13 +66,11 @@ class GeometricMeasure(Geometry):
         Registry().remove_from_registry(other_measure)
 
 class SegmentMeasure(GeometricMeasure):
-    _registry_key = 'SegmentMeasure'
     _label_prefix = 's'
     def __init__(self, value=None) -> None:
         super().__init__(value)
 
 class AngleMeasure(GeometricMeasure):
-    _registry_key = 'AngleMeasure'
     _label_prefix = 'a'
     def __init__(self, value=None) -> None:
         super().__init__(value)
@@ -94,13 +95,11 @@ class GeometricObject(Geometry):
             self.measure._add_measured_object(self)
 
 class Point(GeometricObject):
-    _registry_key = 'Point'
 
     def __new__(cls, label):
         return super().__new__(cls, label)
 
 class Segment(GeometricObject):
-    _registry_key = 'Segment'
     _measure_class = SegmentMeasure
 
     def __new__(cls, endpoints: set):
@@ -111,7 +110,6 @@ class Segment(GeometricObject):
         return instance
 
 class Angle(GeometricObject):
-    _registry_key = 'Angle'
     _measure_class = AngleMeasure
 
     def __new__(cls, points: list):
@@ -156,7 +154,6 @@ class Polygon(Shape):
         return points[lexical_first_loc:] + points[:lexical_first_loc]
 
 class Triangle(Polygon):
-    _registry_key = 'Triangle'
     def __new__(cls, points: list):
         '''Points must be ordered in a clockwise motion.
         '''
