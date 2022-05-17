@@ -1,5 +1,8 @@
 from collections import defaultdict
 
+class Geometry:
+    pass
+
 class Registry:
     '''Singleton registry of measures.
     '''
@@ -20,9 +23,9 @@ class Registry:
     def remove_from_registry(self, entry):
         self.entries[entry._registry_key].pop(entry.label, None)
 
-    def get_auto_label(self, registry_key):
-        self.auto_label_counter[registry_key] += 1
-        return self.auto_label_counter[registry_key]
+    def get_auto_label(self, geometry: Geometry):
+        self.auto_label_counter[geometry._registry_key] += 1
+        return f'{geometry._label_prefix}{self.auto_label_counter[geometry._registry_key]}'
 
     def search_registry(self, registry_key, label):
         try:
@@ -39,17 +42,17 @@ class Registry:
         except KeyError:
             return None
 
-class Measure:
-    def __init__(self, measure=None) -> None:
-        '''If measure is None, then the measure is not yet quantified.
+class GeometricMeasure(Geometry):
+    def __init__(self, value=None) -> None:
+        '''If value is None, then the measure is not yet quantified.
         '''
-        self.measure = measure
+        self.value = value
         self.measured_objects = set()
-        self.label = Registry().get_auto_label(self._registry_key)
+        self.label = Registry().get_auto_label(self)
         Registry().add_to_registry(self)
     
     def __repr__(self) -> str:
-        return f'{self._registry_key}(#{self.label}={self.measure})'
+        return f'{self._registry_key}({self.label}={self.value})'
 
     def _add_measured_object(self, measured_object) -> None:
         self.measured_objects.add(measured_object)
@@ -59,17 +62,19 @@ class Measure:
             measured_object.set_measure(self)
         Registry().remove_from_registry(other_measure)
 
-class SegmentMeasure(Measure):
+class SegmentMeasure(GeometricMeasure):
     _registry_key = 'SegmentMeasure'
-    def __init__(self, measure=None) -> None:
-        super().__init__(measure)
+    _label_prefix = 's'
+    def __init__(self, value=None) -> None:
+        super().__init__(value)
 
-class AngleMeasure(Measure):
+class AngleMeasure(GeometricMeasure):
     _registry_key = 'AngleMeasure'
-    def __init__(self, measure=None) -> None:
-        super().__init__(measure)
+    _label_prefix = 'a'
+    def __init__(self, value=None) -> None:
+        super().__init__(value)
     
-class Geometry:
+class GeometricObject(Geometry):
     def __new__(cls, label):
         entry = Registry().search_registry(cls._registry_key, label)
         if entry is None:
@@ -82,28 +87,32 @@ class Geometry:
     def __repr__(self) -> str:
         return f'{self._registry_key}({self.label})'
 
-    def set_measure(self, measure: Measure) -> None:
-        assert not isinstance(self, Point)
-        self.measure = measure
-        measure._add_measured_object(self)
+    def _set_measure(self) -> None:
+        assert hasattr(self, '_measure_class')
+        if not hasattr(self, 'measure'):
+            self.measure = self._measure_class()
+            self.measure._add_measured_object(self)
 
-class Point(Geometry):
+class Point(GeometricObject):
     _registry_key = 'Point'
 
     def __new__(cls, label):
         return super().__new__(cls, label)
 
-class Segment(Geometry):
+class Segment(GeometricObject):
     _registry_key = 'Segment'
+    _measure_class = SegmentMeasure
 
     def __new__(cls, endpoints: set):
         label = '-'.join(sorted([p.label for p in endpoints]))
         instance = super().__new__(cls, label)
+        instance._set_measure()
         instance.endpoints = endpoints
         return instance
 
-class Angle(Geometry):
+class Angle(GeometricObject):
     _registry_key = 'Angle'
+    _measure_class = AngleMeasure
 
     def __new__(cls, points: list):
         '''Points must be ordered such that the angle represents the clockwise motion from the first defined segment to the second defined segment.
@@ -111,10 +120,11 @@ class Angle(Geometry):
         '''
         label = '-'.join([p.label for p in points])
         instance = super().__new__(cls, label)
+        instance._set_measure()
         instance.points = points
         return instance
 
-class Shape(Geometry):
+class Shape(GeometricObject):
     def __new__(cls, label):
         return super().__new__(cls, label)
 
@@ -160,10 +170,9 @@ if __name__ == '__main__':
     A = Point('A')
     B = Point('B')
     C = Point('C')
-    # s1 = Segment({A, B})
-    # s2 = Segment({B, C})
-    # s1.set_measure(SegmentMeasure())
-    # s2.set_measure(SegmentMeasure())
+    s1 = Segment({A, B})
+    s2 = Segment({B, C})
+    s1.measure.value = 3
     # s1.measure.set_equal_to(s2.measure)
     # print(s1.measure)
     # print(s2.measure)
@@ -172,6 +181,7 @@ if __name__ == '__main__':
     T2 = Triangle([B, C, A])
     print(T1.edges)
     print(T1.angles)
+    print(T1.edges[0].measure)
     try:
         T3 = Triangle([B, A, C])
     except:
