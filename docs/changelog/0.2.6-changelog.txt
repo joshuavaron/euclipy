@@ -1,0 +1,6 @@
+0.2.6 (5/27/2022)
+-------------------
+- Added isoscelese_triangle_theorem function
+    - Includes Isoscelese Triangle Theorem and Conjugate
+- Refactored triangle sum theorem
+- Refactored measure identities

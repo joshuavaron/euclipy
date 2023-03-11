@@ -1,0 +1,5 @@
+0.1.0 (5/13/2022)
+-------------------
+- Added Triangle Sum Theorem
+- Added solve()
+- Added unidentified angle variables

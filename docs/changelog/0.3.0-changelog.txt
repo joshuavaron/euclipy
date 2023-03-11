@@ -1,0 +1,8 @@
+0.3.0 (3/11/2023)
+-------------------
+- Rewrite of codebase
+- Added Line class to represent abstract lines
+- Added colinear point functionality
+- Added theorem Subsegment Sum Theorem
+- Refactored registry
+- Refactored expression solver

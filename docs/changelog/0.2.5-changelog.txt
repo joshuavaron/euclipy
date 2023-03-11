@@ -1,0 +1,5 @@
+0.2.5 (5/17/2022)
+-------------------
+- Added Theorem class
+- Added TriangleSumTheorem class
+- Refactored code

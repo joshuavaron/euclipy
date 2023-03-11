@@ -1,0 +1,11 @@
+Contents:
+1.x.x - triangles
+x.0.x - angles
+x.1.x - sides
+-------------------
+Number - Name - Description
+-------------------
+1.0.1 - Triangle Sum Theorem - All angles in a triangle add up to 180 degrees
+1.0.2 - Isoscelese Triangle Theorem - If two sides are of equal measure, the angles opposing the sides are also of equal measure
+1.1.1 - Isoscelese Triangle Theorem (Conjugate) - If two angles are of equal measure, the sides opposing the angles are also of equal measure
+1.1.2 - Pythagorean Theorem - In a right triangle with sides a, b, and hypotenuse c, a^2 + b^2 = c^2

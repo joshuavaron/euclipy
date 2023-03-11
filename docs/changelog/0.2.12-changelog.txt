@@ -1,0 +1,4 @@
+0.2.12 (5/31/2022)
+-------------------
+- Refactored theorems
+- Added singleton Expressions class
