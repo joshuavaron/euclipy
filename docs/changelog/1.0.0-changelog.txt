@@ -1,0 +1,13 @@
+1.0.0 (6/20/2023)
+-------------------
+- Added angle reflexivities
+    - Angle reflexivities may be used to generate relative positioning
+    - Angle reflexivities are determined automatically when possible
+        - Conjugate angles have opposite reflexivities
+        - Angle measures imply reflexivities
+        - At an intersection of two lines, the reflexivity of any angle formed at the intersection implies the reflexivity of the rest
+- Added rays
+    - Angles may be formed by two rays
+- Added new theorems
+- General bug fixes
+- 99% test coverage

@@ -9,7 +9,6 @@ Typical usage example:
 """
 
 import collections
-import functools
 import itertools
 import pprint
 
@@ -22,6 +21,10 @@ class RegisteredObject:
     registry.
     """
     # Instance methods for initializing/registering and deregistering objects
+    def __new__(cls) -> None:
+        obj = super().__new__(cls)
+        obj._successor = None
+        return obj
 
     def __init__(self, *_args, **_kwargs) -> None:
         """Add object to registry if not already registered
@@ -30,11 +33,42 @@ class RegisteredObject:
         # a previously-created object.  In that case, object should not be
         # initialized/registered again.
         if not hasattr(self, '_registered'):
+            self._successor = None
             # If object lacks a key, use an automatically generated key instead
-            if not hasattr(self, 'key'):
+            if not hasattr(self, '_key'):
                 self.key = self.auto_key()
             self.register()
+            self._callbacks = []
             super().__init__()
+
+    def __getattribute__(self, name):
+        successor = object.__getattribute__(self, '_successor')
+        if successor and name != '_successor' and name != '_predecessor':
+            return getattr(successor, name)
+        return object.__getattribute__(self, name)
+
+    @property
+    def _identifier(self): #pragma: no cover
+        raise NotImplementedError
+
+    @property
+    def key(self):
+        """Key for object in registry
+        """
+        return self._key
+
+    @key.setter
+    def key(self, value):
+        """Set key for object in registry
+        """
+        check_registry = hasattr(self, '_key')
+        self._key = value
+        if check_registry: # pragma: no cover TODO: Remove this line once implemented
+            for obj in self.elements():
+                # TODO: Need to find objects with same obj.key but different key in the registry
+                # TODO: Merging of objects need to fire callbacks to replace all
+                    # references to deregistered objects with surviving object
+                pass
 
     def register(self):
         """Add object to the registry.
@@ -42,14 +76,38 @@ class RegisteredObject:
         self.get_registry()[self.key] = self
         self._registered = True
 
-    def deregister(self, successor):
-        """Remove object from the registry.
+    def update_key(self, new_key):
+        """Update key for object in registry
         """
+        if self.key != new_key:
+            obj_with_new_key = self.get_registry().get(new_key)
+            if obj_with_new_key:
+                self.replace(obj_with_new_key)
+            else:
+                self.get_registry().pop(self.key)
+                self.key = new_key
+                self.register()
+                self.broadcast_change(None)
+
+    def broadcast_change(self, successor):
+        for callback in self._callbacks:
+            callback(self, successor)
+            if successor:
+                successor.call_when_changed(callback)
+
+    def replace(self, successor):
         assert type(self) is type(successor)
+        # Broadcast replacement to all callbacks
+        self.broadcast_change(successor)
+        # Set successor and deregister self
         self.get_registry().pop(self.key)
-        self.successor = successor
-        successor.predecessor = self
+        successor._predecessor = self
         del self._registered
+        self._successor = successor
+        # TODO: Should also clean up registry
+
+    def call_when_changed(self, callback):
+        self._callbacks.append(callback)
 
     # Class methods for class-level registries
 
@@ -61,7 +119,7 @@ class RegisteredObject:
             Auto-incremented integer key for object, unique only among
             instances of the same class (not unique among subclasses)
         """
-
+        # TODO: There may not be users of auto_key left.  Consider removing
         if '_auto_key_counter' not in cls.__dict__:
             cls._auto_key_counter = 0
         cls._auto_key_counter += 1
@@ -94,6 +152,23 @@ class RegisteredObject:
         own = cls.elements()
         subs = (_.elements_recursive() for _ in cls.__subclasses__())
         return itertools.chain(own, itertools.chain.from_iterable(subs))
+
+    @classmethod
+    def remove_duplicates(cls):
+        sig_obj_map = collections.defaultdict(list)
+        for obj in cls.elements():
+            sig_obj_map[obj._identifier].append(obj)
+        dup_objs_list = [objlist for objlist in sig_obj_map.values() if len(objlist) > 1]
+        if len(dup_objs_list) > 0:
+            assert len(dup_objs_list) == 1
+            dup_objs = dup_objs_list[0]
+            retain = dup_objs[0]
+            for obj in dup_objs[1:]:
+                if issubclass(type(obj), MeasurableGeometricObject):
+                    obj.measure = retain.measure
+                obj.replace(retain)
+            retain.broadcast_change(None)
+            return retain
 
     @classmethod
     def reset_registry(cls):
@@ -131,6 +206,10 @@ class Expression(RegisteredObject):
     This can be avoided by prempting instantiation and testing for each
     registered non-zero expression e whether sympy.simplify(e.expr - expr) == 0
     """
+    def __new__(cls, expr, predecessor=None, substitutions=None) -> None:
+        del expr, predecessor, substitutions
+        return super().__new__(cls)
+
     def __init__(self, expr, predecessor=None, substitutions=None) -> None:
         assert isinstance(expr, sympy.Expr)
         self.expr = expr
@@ -138,10 +217,17 @@ class Expression(RegisteredObject):
             assert isinstance(substitutions, dict)
         self.substitutions = substitutions
         if predecessor:
-            predecessor.deregister(successor=self)
+            predecessor.replace(successor=self)
         else:
-            self.predecessor = None
+            self._predecessor = None
         super().__init__()
+
+    def __getattribute__(self, name):
+        return object.__getattribute__(self, name)
+
+    @property
+    def _identifier(self):
+        return self.expr
 
     def subs(self, replacements):
         """Make substitutions from replacements in expression (self.expr)
@@ -167,9 +253,9 @@ class Expression(RegisteredObject):
         raise exceptions.SystemOfEquationsError('Expression without free \
             symbols cannot evaluate to a non-zero value.')
 
-    def __repr__(self) -> str:
-        if self.predecessor:
-            rep = ', predecessor=' + repr(self.predecessor)
+    def __repr__(self) -> str: # pragma: no cover
+        if self._predecessor:
+            rep = ', predecessor=' + repr(self._predecessor)
         else:
             rep = ''
         if self.substitutions:
@@ -192,13 +278,24 @@ class Expression(RegisteredObject):
     @classmethod
     def solve_system(cls):
         """Solve expressions for positive values.
-        Raise exception if any variable has a unique non-positive solution.
-        Raise an exception if any variable with non-unique solutions has zero or
-        more than one positive solutions."""
+
+        Returns:
+            - dict mapping symbols to values of solutions
+            - empty dict if no unsolved expressions exist
+            - empty dict system cannot yet be solved but there are no inconsistencies
+        Raises: SystemOfEquationsError if
+            - any variable has a unique non-positive solution.
+            - any variable with non-unique solutions has zero or more than one positive solutions.
+            - the system cannot have any solutions
+        """
 
         # Find valid solutions to the system of equuations, if any
         unsolved = [e for e in cls.elements() if e.expr != 0]
+        if not unsolved:
+            return {}
         solutions = sympy.solve([e.expr for e in unsolved], dict=True)
+        if not solutions:
+            raise exceptions.SystemOfEquationsError('Unsolved expressions with no solution.')
         uniques = set.intersection(*[set(sol.items()) for sol in solutions])
         non_uniques = [set(sol.items()) - uniques for sol in solutions]
         uniques = dict(uniques)
@@ -238,12 +335,12 @@ class Expression(RegisteredObject):
             expr = expr.subs(valid_solutions)
         for sym, val in valid_solutions.items():
             MeasurableGeometricObject.substitute_measure_symbol(sym, val)
+        return valid_solutions
 
 
-class GeometricObject (RegisteredObject):
+class GeometricObject(RegisteredObject):
     """Base class for all geometric objects
     """
-
 
 class MeasurableGeometricObject(GeometricObject):
     """Base class for all geometric objects that can be measured
@@ -301,8 +398,10 @@ class MeasurableGeometricObject(GeometricObject):
         if measure is None:
             self._measure = self.auto_measure_symbol()
         else:
-            isinstance(measure, (sympy.Symbol, sympy.Number))
-            self._measure = measure
+            if isinstance(measure, (sympy.Symbol, sympy.Number)):
+                self._measure = measure
+            else:
+                raise ValueError(f'Cannot set measure to {measure}.')
 
     @property
     def measure(self):
@@ -320,17 +419,20 @@ class MeasurableGeometricObject(GeometricObject):
         - a sympy number (instnace of sympy.Number)
         - a sympy symbol (instance of sympy.Symbol)
         '''
+        #TODO: Add support for different numeric types
         try:
             new = sympy.sympify(new)
         except sympy.SympifyError as exc:
             raise ValueError(f'Cannot set measure to {new}.') from exc
+        if not isinstance(new, (sympy.Symbol, sympy.Number)):
+            raise ValueError(f'Cannot set measure to {new}.')
 
         if self.has_measure:
             old = self._measure
             if isinstance(old, sympy.Symbol):
                 self.substitute_measure_symbol(old, new)
                 Expression.subs_all_expressions({old: new})
-            elif isinstance(old, sympy.Number):
+            else: # old is a sympy.Number
                 if isinstance(new, sympy.Symbol):
                     self.substitute_measure_symbol(new, old)
                     Expression.subs_all_expressions({new: old})
@@ -338,240 +440,12 @@ class MeasurableGeometricObject(GeometricObject):
                     if new != old:
                         raise ValueError(f'Cannot set measure to {new}, \
                             because it is already set to {old}.')
-            else:
-                raise TypeError(f'Cannot set measure to {new}.')
         else:
             self.set_measure(new)
 
-
-@functools.total_ordering
-class Point(GeometricObject):
-    """A point on the Euclidean plane
-    
-    Represents a point on the Euclidean plane, identified by a string label not
-    containing spaces. Upon instantiation, Points are registered in the global
-    registry. Therefore, subsequent attempts to instantiate Point objects with
-    the same label simply return the existing Point object with that label.
-    
-    >>> Point('A') is Point ('A')
-    True
-    
-    Attributes:
-        label: string label not containing spaces
-        key: label is used as the key in the registry
-    """
-    def __new__(cls, label: str):
-        if not isinstance(label, str):
-            raise ValueError('Points require string labels.')
-        registered_point = cls.get(label)
-        if registered_point:
-            return registered_point
-        return cls.__construct(label)
-
-    @classmethod
-    def __construct(cls, label: str):
-        """Create new Point instance
-        
-        Args:
-            label: non-empty string not containing spaces
-            
-        Raises:
-            ValueError if label is empty or contains spaces
-        """
-        if label == '':
-            raise ValueError('Empty string is not a valid Point label.')
-        if ' ' in label:
-            raise ValueError('Spaces are not permitted in Point labels.')
-        obj = super().__new__(cls)
-        obj.key = label
-        obj._pred = set()
-        obj._op = Point.__construct
-        return obj
-
-    def __lt__(self, obj):
-        return self.key < obj.key
-
-    def __eq__(self, obj):
-        return self.key == obj.key
-
-    def __hash__(self):
-        return hash(self.key)
-
-    def __repr__(self) -> str:
-        """Provides string represetnation of point, e.g. 'Point(A)'
-        """
-        return f'{self.__class__.__name__}({self.key})'
-
-def points(pts):
-    """Provides standard representation of point(s) from multiple inputs
-            
-    Args:
-        pts: Point, tuple of Points, or space-delimited point label(s)
-        
-    Returns:
-        Point instance or a tuple of Point instances
-    
-    Raises:
-        ValueError if pts is an invalid representation of point(s)
-
-    Typical use:
-
-    >>> points(Point('A'))
-    Point(A)
-    >>> points('A')
-    Point(A)
-    >>> points((Point('A'), Point('B')))
-    (Point(A), Point(B))
-    >>> points('A B')
-    (Point(A), Point(B))    
-    """
-    if isinstance(pts, Point):
-        return pts
-    if isinstance(pts, str):
-        pts = tuple(Point(pt_label) for pt_label in pts.split(' '))
-    if not (isinstance(pts, tuple) and all(isinstance(p, Point) for p in pts)):
-        raise ValueError('Invalid representation of point(s) as input')
-    if len(pts) != len(set(pts)):
-        raise ValueError('Points are not all distinct')
-    if len(pts) == 1:
-        return pts[0]
-    return pts
-
-
-class Line(GeometricObject):
-    """A line represented by ordered colinear points on the Euclidean plan
-    
-    Attributes:
-        points: tuple of Points, as ordered on the line they are a part of
-    """
-    def __new__(cls, pts):
-        pts = points(pts)
-        if not (isinstance(pts, tuple) and len(pts) > 1):
-            raise ValueError('Instantiating a Line requires >= 2 points.')
-        reg_common_pts = [obj for obj in cls.elements()
-                          if len(set(obj.points).intersection(set(pts))) > 1]
-        if reg_common_pts:
-            for registered in reg_common_pts:
-                pts = cls.bidirectional_order_preserving_merge(registered.points, pts)
-            pts = cls.canonical_ordering(pts)
-            retain = reg_common_pts[0]
-            if pts == retain.points:
-                return retain
-            # Some points have been merged from one or more existing lines from the registry
-            remove = reg_common_pts[1:]
-            retain.points = pts
-            for obj in remove:
-                obj.deregister()
-            return retain
-        # No existing line has two or more points in common with the new line;
-        # create a new line instance
-        obj = super().__new__(cls)
-        obj.points = cls.canonical_ordering(pts)
-        return obj
-
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({" ".join([p.key for p in self.points])})'
-
-    @staticmethod
-    def canonical_ordering(pts):
-        """Canonical ordering of segment endpoints by lexical ordering"""
-        if pts[0] < pts[-1]:
-            return pts
-        return tuple(reversed(pts))
-
-    @staticmethod
-    def bidirectional_order_preserving_merge(s_a, s_b):
-        """Merges two sequences of points, if they can be consistently aligned
-        """
-        def order_preserving_merge(s_a, s_b):
-            if len(s_a) == 0:
-                return tuple(s_b)
-            if len(s_b) == 0:
-                return tuple(s_a)
-            if s_a[0] == s_b[0]:
-                return (s_a[0],) + tuple(order_preserving_merge(s_a[1:], s_b[1:]))
-            if s_a[0] in s_b:
-                return (s_b[0],) + tuple(order_preserving_merge(s_a, s_b[1:]))
-            if s_b[0] in s_a:
-                return (s_a[0],) + tuple(order_preserving_merge(s_a[1:], s_b))
-            # Neither of the first elements are common among the two tuples
-            raise exceptions.ColinearPointSequenceError(
-                'Order of sequences ambiguous.', s_a, s_b)
-
-        common_ordered_as_s_a = tuple(e for e in s_a if e in s_b)
-        if len(common_ordered_as_s_a) < 2:
-            raise exceptions.ColinearPointSequenceError(
-                'Sequences have fewer than two points in common.', s_a, s_b)
-        common_ordered_as_s_b = tuple(e for e in s_b if e in s_a)
-        if common_ordered_as_s_a == common_ordered_as_s_b:
-            return order_preserving_merge(tuple(s_a), tuple(s_b))
-        if common_ordered_as_s_a == tuple(reversed(common_ordered_as_s_b)):
-            return order_preserving_merge(tuple(s_a), tuple(reversed(s_b)))
-        raise exceptions.ColinearPointSequenceError(
-            'Sequences cannot be aligned consistently.', tuple(s_a), tuple(s_b))
-
-    def segments_with_subsegments(self):
-        """All segments contained in the line that have subsegments
-        """
-        pts = self.points
-        num_pts = len(pts)
-        return [Segment((pts[i], pts[i+k]))
-                for k in range(2, num_pts)
-                for i in range(num_pts-k)]
-
-
-class Segment(MeasurableGeometricObject):
-    """A segment represented by its two endpoints on the Euclidean plane
-    """
-    def __new__(cls, pts):
-        '''Argument endpoints is one of the following:
-        - a space separated pair of point labels representing a segment, e.g. 'B A'
-        - a tuple of two Point objects'''
-        pts = points(pts)
-        if not (isinstance(pts, tuple) and len(pts) == 2):
-            raise ValueError('Instantiating a Segment requires exactly 2 points.')
-        # Determine canonical ordering of points (lexical for Segments)
-        ordered_pts = tuple(sorted(pts))
-        # Construct key based on canonically ordered points
-        canonical_key = ' '.join([p.key for p in ordered_pts])
-        # If Segment with canonical_key is already registered, return it
-        registered = cls.get(canonical_key)
-        if registered:
-            return registered
-        return cls.__construct(canonical_key, ordered_pts)
-
-    @classmethod
-    def __construct(cls, key, ordered_pts):
-        obj = super().__new__(cls)
-        obj.points = ordered_pts
-        obj.key = key
-        obj._pred = set(ordered_pts)
-        obj._op = Segment.__construct
-        return obj
-
-    def __repr__(self) -> str:
+    def __repr__(self) -> str: # pragma: no cover
         measure = ', measure=' + repr(self.measure) if self.has_measure else ''
         return f'{self.__class__.__name__}({self.key}{measure})'
-
-    @property
-    def line(self):
-        """Returns the Line that segment lies on
-        """
-        return Line(self.points)
-
-    def atomic_subsegments(self):
-        """Returns a list of all atomic subsegments of the segment
-        
-        Atomic subsegments are subsegments that do not contain other subsegments
-        of the segment.
-        """
-        line_pts = self.line.points
-        pt_l, pt_r = self.points
-        idx_l, idx_r = line_pts.index(pt_l), line_pts.index(pt_r)
-        seg_pts = line_pts[idx_l:idx_r+1]
-        return [Segment((seg_pts[i], seg_pts[i+1]))
-                for i in range(len(seg_pts)-1)]
-
 
 if __name__ == '__main__':
     pass

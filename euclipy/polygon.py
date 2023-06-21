@@ -1,6 +1,7 @@
 """Classes representing polygons on the Euclidean plane
 """
-from euclipy.core import GeometricObject, Segment, points
+from euclipy.core import GeometricObject
+from euclipy.geometricobjects import Segment, Angle, points
 
 class Polygon(GeometricObject):
     """A polygon represented by its vertices on the Euclidean plane
@@ -36,26 +37,25 @@ class Polygon(GeometricObject):
             raise RuntimeError('Polygon inconsistent with existing polygon.')
         # Create new instance
         return cls.__construct(key, canonical_pts)
-        # obj = super().__new__(cls)
-        # obj.points = canonical_pts
-        # obj.key = key
-        # obj.segments = [Segment((p1, p2)) for p1, p2
-        #                 in zip(obj.points, obj.points[1:] + (obj.points[0],))]
-        # return obj
 
     @classmethod
     def __construct(cls, key, canonical_pts):
         obj = super().__new__(cls)
         obj.key = key
         obj.points = canonical_pts
+        circular_points = obj.points + obj.points[:2]
+        obj.angles = []
+        for i in range(len(obj.points)):
+            obj.angles.append(
+                Angle((circular_points[i], circular_points[i+1], circular_points[i+2])))
         obj.segments = [Segment((p1, p2)) for p1, p2
                         in zip(obj.points, obj.points[1:] + (obj.points[0],))]
-        obj._pred = set(obj.segments)
-        obj._op = cls.__construct
+        # obj._pred = set(obj.segments)
+        # obj._op = cls.__construct
         return obj
 
 
-    def __repr__(self):
+    def __repr__(self): # pragma: no cover
         return f'{self.__class__.__name__}({" ".join([p.key for p in self.points])})'
 
     @staticmethod
@@ -76,4 +76,8 @@ class Triangle(Polygon):
     """A triangle represented by its three vertices on the Euclidean plane
     """
     def __new__(cls, pts):
+        return cls.__construct(points(pts))
+
+    @classmethod
+    def __construct(cls, pts):
         return super().__new__(cls, pts)

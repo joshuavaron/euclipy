@@ -22,7 +22,7 @@ copyright = '2022, Joshua Varon'
 author = 'Joshua Varon'
 
 # The full version, including alpha/beta/rc tags
-release = '0.2.11'
+release = '1.0.0'
 
 
 # -- General configuration ---------------------------------------------------

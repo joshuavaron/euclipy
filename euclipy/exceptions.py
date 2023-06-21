@@ -11,7 +11,7 @@ class ColinearPointSequenceError(Exception):
         self.seq1 = seq1
         self.seq2 = seq2
 
-    def __str__(self):
+    def __str__(self): # pragma: no cover
         return f'{self.message} {self.seq1}  {self.seq2}'
 
 class SystemOfEquationsError(Exception):
@@ -20,5 +20,5 @@ class SystemOfEquationsError(Exception):
     def __init__(self, description):
         self.description = description
 
-    def __str__(self):
+    def __str__(self): # pragma: no cover
         return f'{self.description}'
