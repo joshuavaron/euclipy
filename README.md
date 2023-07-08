@@ -17,7 +17,9 @@
 
 - Create symbolic geometric objects (Triangle(), Segment(), Point(), etc.)
 
-- Implicitly defines segments created by constructions
+- Implicitly defines objects created by constructions
+
+- Implicitly gathers implicit information created by previous constructions
 
   
 
@@ -35,8 +37,8 @@ pip install euclipy
 
 ```py
 
-from euclipy.core import Line, Segment, Expression
-
+from euclipy.core import Expression
+from euclipy.geometricobjects import Line, Segment
 import euclipy.theorems as theorems
 
   
@@ -52,7 +54,7 @@ if  __name__ == '__main__':
     
     # Apply the relevant theorem which creates expressions about the sums of
     # contiguous subsegments of line segments
-    theorems.theorem_subsegment_sum(line)
+    theorems.subsegment_sum_theorem(line)
 
     # Solve the system of equations resresented by all of the expressions
     # created by theorems

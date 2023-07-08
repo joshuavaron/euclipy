@@ -385,7 +385,7 @@ class Angle(MeasurableGeometricObject):
         
         The points are to be ordered in a clockwise fashion, for example:
         - Angle('A B C') represents the angle between Segment('A B') and Segment('B C'), 
-            starting at Segment('B C') and moving counterclockwise.
+            starting at Segment('A B') and moving counterclockwise.
         '''
         if len(pts_or_rays) == 2 and isinstance(pts_or_rays[0], Ray) and isinstance(pts_or_rays[1], Ray):
             ray1, ray2 = pts_or_rays
