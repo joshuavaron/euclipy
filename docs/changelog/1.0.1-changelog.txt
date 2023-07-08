@@ -1,0 +1,4 @@
+1.0.1 (7/82023)
+-------------------
+- Fixed docstring
+- Fixed readme
