@@ -8,21 +8,23 @@ Typical usage example:
 """
 
 import functools
-from euclipy.core import GeometricObject, MeasurableGeometricObject
+import sympy
+from euclipy.core import GeometricObject, MeasurableGeometricObject, Expression
 import euclipy.exceptions as exceptions
+
 
 @functools.total_ordering
 class Point(GeometricObject):
     """A point on the Euclidean plane
-    
+
     Represents a point on the Euclidean plane, identified by a string label not
     containing spaces. Upon instantiation, Points are registered in the global
     registry. Therefore, subsequent attempts to instantiate Point objects with
     the same label simply return the existing Point object with that label.
-    
+
     >>> Point('A') is Point ('A')
     True
-    
+
     Attributes:
         label: string label not containing spaces
         key: label is used as the key in the registry
@@ -33,27 +35,11 @@ class Point(GeometricObject):
         registered_point = cls.get(label)
         if registered_point:
             return registered_point
-        return cls.__construct(label)
-
-    @classmethod
-    def __construct(cls, label: str):
-        """Create new Point instance
-        
-        Args:
-            label: non-empty string not containing spaces
-            
-        Raises:
-            ValueError if label is empty or contains spaces
-        """
         if label == '':
             raise ValueError('Empty string is not a valid Point label.')
         if ' ' in label:
             raise ValueError('Spaces are not permitted in Point labels.')
-        obj = super().__new__(cls)
-        obj.key = label
-        # obj._pred = set()
-        # obj._op = Point.__construct
-        return obj
+        return super().__new__(cls, key=label)
 
     @property
     def _identifier(self):
@@ -75,13 +61,13 @@ class Point(GeometricObject):
 
 def points(pts):
     """Provides standard representation of point(s) from multiple inputs
-            
+
     Args:
         pts: Point, tuple of Points, or space-delimited point label(s)
-        
+
     Returns:
         Point instance or a tuple of Point instances
-    
+
     Raises:
         ValueError if pts is an invalid representation of point(s)
 
@@ -94,7 +80,7 @@ def points(pts):
     >>> points((Point('A'), Point('B')))
     (Point(A), Point(B))
     >>> points('A B')
-    (Point(A), Point(B))    
+    (Point(A), Point(B))
     """
     if isinstance(pts, Point):
         return pts
@@ -111,7 +97,7 @@ def points(pts):
 
 class Line(GeometricObject):
     """A line represented by ordered colinear points on the Euclidean plan
-    
+
     Attributes:
         points: tuple of Points, as ordered on the line they are a part of
     """
@@ -119,8 +105,8 @@ class Line(GeometricObject):
         pts = points(pts)
         if not (isinstance(pts, tuple) and len(pts) > 1):
             raise ValueError('Instantiating a Line requires >= 2 points.')
-        canonical_pts = cls.canonical_ordering(pts)
-        key = ' '.join([point.key for point in canonical_pts])
+        canonical_points = cls.canonical_points(pts)
+        key = ' '.join([p.key for p in canonical_points])
         registered = cls.get(key)
         if registered:
             return registered
@@ -128,35 +114,31 @@ class Line(GeometricObject):
         reg_common_pts = [obj for obj in cls.elements()
                           if len(set(obj.points).intersection(set(pts))) > 1]
         # If objects with 2 or more common points exist, merge them
+        obj = None
         if reg_common_pts:
             for registered in reg_common_pts:
                 pts = cls.bidirectional_order_preserving_merge(registered.points, pts)
-            pts = cls.canonical_ordering(pts)
+            pts = cls.canonical_points(pts)
             updates_made = False
             for registered in reg_common_pts:
                 if registered.points != pts:
                     registered.points = pts
                     updates_made = True
             if len(reg_common_pts) > 1:
-                return cls.remove_duplicates()
-            elif updates_made:
-                reg_common_pts[0].broadcast_change(None)
-            return reg_common_pts[0]
+                obj = cls.remove_duplicates()
+            else:
+                if updates_made:
+                    reg_common_pts[0].broadcast_change(None)
+                obj = reg_common_pts[0]
         # No existing line has two or more points in common with the new line;
         # create a new line instance.
-        return cls.__construct(canonical_pts, key)
-
-    @classmethod
-    def __construct(cls, canonical_pts, key):
-        """Create new Line instance
-        
-        Args:
-            canonical_pts: tuple of >= 2 Points in canonical order
-            key: string representation of canonical_pts
-        """
-        obj = super().__new__(cls)
-        obj.points = canonical_pts
-        obj.key = key
+        else:
+            obj = super().__new__(cls, key=key)
+            obj.points = canonical_points
+        # Create segments for all pairs of points on the line
+        _ = [Segment((obj.points[i], p2))
+             for i in range(len(obj.points))
+             for p2 in obj.points[i+1:]]
         return obj
 
     @property
@@ -167,7 +149,7 @@ class Line(GeometricObject):
         return f'{self.__class__.__name__}({" ".join([p.key for p in self.points])})'
 
     @staticmethod
-    def canonical_ordering(pts):
+    def canonical_points(pts):
         """Canonical ordering of segment endpoints by lexical ordering"""
         if pts[0] < pts[-1]:
             return pts
@@ -222,7 +204,7 @@ class Line(GeometricObject):
             return common_pts.pop()
 
     def is_interior_of_known_points(self, point: Point):
-        """Returns True if point is interior to the line 
+        """Returns True if point is interior to the line
         with respect to known points, False otherwise
         """
         if not isinstance(point, Point):
@@ -232,14 +214,13 @@ class Line(GeometricObject):
             return not (index == 0 or index == len(self.points) - 1)
         except ValueError:
             return False
-        
+
     def nonreflex_angles_formed_by_intersection(self, other):
         intersection = self.intersection_point(other)
         if intersection is None:
             raise RuntimeError("Intersection angles can not be determined due to unknown intersection point.")
         pts = [self.points[0], other.points[0], self.points[-1], other.points[-1]]
         rays = [Ray((intersection, point)) if point != intersection else None for point in pts]
-        print(f'rays: {rays}')
         num_rays = len(rays)
         angles = []
         for _ in range(num_rays):
@@ -247,11 +228,8 @@ class Line(GeometricObject):
             if all(ray_pair):
                 angles.append(Angle(ray_pair))
         reflexivities = [angle.reflex for angle in angles]
-        print(f'DAS KAPITAL: {reflexivities}')
         if any([reflex is not None for reflex in reflexivities]):
-            reflex_true = True in reflexivities
-            reflex_false = False in reflexivities
-            if reflex_true:
+            if True in reflexivities:
                 angles = [angle.explementary for angle in angles]
             for angle in angles:
                 angle.reflex = False
@@ -266,7 +244,7 @@ class Line(GeometricObject):
 
         Raises: ValieError if vertex and pointing_to are the same point
         """
-        line = Line((vertex, pointing_to)) # Will raise ValueErrir if vertex and pointing_to are the same point
+        line = Line((vertex, pointing_to)) # Will raise ValueError if vertex and pointing_to are the same point
         v_idx = line.points.index(vertex)
         p_idx = line.points.index(pointing_to)
         if v_idx < p_idx:
@@ -286,28 +264,25 @@ class Ray(GeometricObject):
         pts = points(pts)
         if not (isinstance(pts, tuple) and len(pts) == 2):
             raise ValueError('Instantiating a Ray requires exactly 2 points.')
-        vertex, pointing_to = pts
-        pointing_to = Line.canonical_ray_direction_point(vertex, pointing_to)
-        canonical_key = f'{vertex.key} {pointing_to.key}'
-        registered = cls.get(canonical_key)
+        vertex, pointing_to = cls.canonical_points(pts)
+        registered = cls.get(f'{vertex.key} {pointing_to.key}')
         if registered:
             return registered
-        return cls.__construct(canonical_key, vertex, pointing_to)
-
-    @classmethod
-    def __construct(cls, key, vertex, pointing_to):
-        obj = super().__new__(cls)
-        obj.vertex = vertex
-        obj.pointing_to = pointing_to
-        obj.key = key
+        # Create new instance
+        obj = super().__new__(cls, key=f'{vertex.key} {pointing_to.key}')
+        obj.vertex, obj.pointing_to = vertex, pointing_to
         Line((vertex, pointing_to)).call_when_changed(obj.update_pointing_to)
-        # obj._pred = set(ordered_pts)
-        # obj._op = Segment.__construct
         return obj
 
     @property
     def _identifier(self):
         return (self.vertex, self.pointing_to)
+
+    @staticmethod
+    def canonical_points(pts):
+        vertex, pointing_to = pts
+        pointing_to = Line.canonical_ray_direction_point(vertex, pointing_to)
+        return (vertex, pointing_to)
 
     @property
     def line(self):
@@ -317,6 +292,13 @@ class Ray(GeometricObject):
         del old_line, new_line
         self.pointing_to = Line.canonical_ray_direction_point(self.vertex, self.pointing_to)
         self.update_key(f'{self.vertex.key} {self.pointing_to.key}')
+
+    def points_on_line_in_ray_direction(self):
+        """Returns all points on the line in the direction of the ray
+        """
+        if self.line.points.index(self.vertex) < self.line.points.index(self.pointing_to):
+            return self.line.points
+        return list(reversed(self.line.points))
 
     def __repr__(self):
         return f'Ray({self.vertex.key} {self.pointing_to.key})'
@@ -332,24 +314,47 @@ class Segment(MeasurableGeometricObject):
         pts = points(pts)
         if not (isinstance(pts, tuple) and len(pts) == 2):
             raise ValueError('Instantiating a Segment requires exactly 2 points.')
-        # Determine canonical ordering of points (lexical for Segments)
-        ordered_pts = tuple(sorted(pts))
         # Construct key based on canonically ordered points
-        canonical_key = ' '.join([p.key for p in ordered_pts])
+        pts = tuple(sorted(pts))
+        canonical_key = ' '.join([p.key for p in pts])
         # If Segment with canonical_key is already registered, return it
         registered = cls.get(canonical_key)
         if registered:
             return registered
-        return cls.__construct(canonical_key, ordered_pts)
+        # Create new instance
+        obj = super().__new__(cls, key=canonical_key)
+        obj.points = pts
+        return obj
+
+    def solve(self, metric='measure'):
+        """Solves for the measure of the segment
+        """
+        super().solve(metric)
+        if metric == 'measure':
+            # TODO: Find a way to avoid importing outside of top level here
+            from euclipy.theorems import subsegment_sum_theorem # pylint: disable=import-outside-toplevel
+            subsegment_sum_theorem(self.line)
+            if not self.measure.free_symbols: # pylint: disable=no-member
+                return self.measure
+        else:
+            raise ValueError('Invalid metric for Segment.solve()')
+
+    def component_of(self):
+        triangles =  {triangle for triangle in Triangle.elements()
+                      if self in triangle.edges}
+        supersegments = {segment for segment in Segment.elements()
+                         if self in segment.subsegments()}
+        return supersegments | triangles
 
     @classmethod
-    def __construct(cls, key, ordered_pts):
-        obj = super().__new__(cls)
-        obj.points = ordered_pts
-        obj.key = key
-        # obj._pred = set(ordered_pts)
-        # obj._op = Segment.__construct
-        return obj
+    def search_registry(cls, pts):
+        """Returns segment defined by pts if it exists
+        Otherwise, returns None
+        """
+        pts = tuple(sorted(pts))
+        canonical_key = ' '.join([p.key for p in pts])
+        # If Segment with canonical_key is already registered, return it
+        return cls.get(canonical_key)
 
     @property
     def _identifier(self):
@@ -361,16 +366,38 @@ class Segment(MeasurableGeometricObject):
         """
         return Line(self.points)
 
-    def atomic_subsegments(self):
-        """Returns a list of all atomic subsegments of the segment
-        
-        Atomic subsegments are subsegments that do not contain other subsegments
-        of the segment.
+    def subsegments(self):
+        """Returns a list of all subsegments of the segment, excluding itself
         """
         line_pts = self.line.points
         pt_l, pt_r = self.points
         idx_l, idx_r = line_pts.index(pt_l), line_pts.index(pt_r)
+        if idx_l > idx_r:
+            idx_l, idx_r = idx_r, idx_l
         seg_pts = line_pts[idx_l:idx_r+1]
+        segments =  [Segment((seg_pts[i], seg_pts[j]))
+                     for i in range(len(seg_pts)-1)
+                     for j in range(i+1, len(seg_pts))]
+        segments.remove(self)
+        return segments
+
+    def contained_points(self):
+        """Returns a list of all points contained in the segment, including endpoints
+        """
+        line_pts = self.line.points
+        pt_l, pt_r = self.points
+        idx_l, idx_r = line_pts.index(pt_l), line_pts.index(pt_r)
+        if idx_l > idx_r:
+            idx_l, idx_r = idx_r, idx_l
+        return line_pts[idx_l:idx_r+1]
+
+    def atomic_subsegments(self):
+        """Returns a list of all atomic subsegments of the segment, including itself if atomic
+
+        Atomic subsegments are subsegments that do not contain other subsegments
+        of the segment.
+        """
+        seg_pts = self.contained_points()
         return [Segment((seg_pts[i], seg_pts[i+1]))
                 for i in range(len(seg_pts)-1)]
 
@@ -382,9 +409,9 @@ class Angle(MeasurableGeometricObject):
         '''Argument pts is one of the following:
         - a space separated triple of point labels representing an angle, e.g. 'B A C'
         - a tuple of three Point objects
-        
+
         The points are to be ordered in a clockwise fashion, for example:
-        - Angle('A B C') represents the angle between Segment('A B') and Segment('B C'), 
+        - Angle('A B C') represents the angle between Segment('A B') and Segment('B C'),
             starting at Segment('A B') and moving counterclockwise.
         '''
         if len(pts_or_rays) == 2 and isinstance(pts_or_rays[0], Ray) and isinstance(pts_or_rays[1], Ray):
@@ -401,17 +428,14 @@ class Angle(MeasurableGeometricObject):
             if reflex is not None:
                 registered.reflex = reflex
             return registered
-        return cls.__construct(canonical_key, (ray1, ray2), reflex)
-
-    @classmethod
-    def __construct(cls, key, spanning_rays, reflexivity):
-        obj = super().__new__(cls)
-        obj.spanning_rays = spanning_rays
-        obj.key = key
-        if isinstance(reflexivity, bool):
-            obj.reflex = reflexivity
-        spanning_rays[0].call_when_changed(obj.update_a_defining_ray)
-        spanning_rays[1].call_when_changed(obj.update_a_defining_ray)
+        # Create new instance
+        obj = super().__new__(cls, key=canonical_key)
+        obj.spanning_rays = (ray1, ray2)
+        ray1.call_when_changed(obj.update_a_defining_ray)
+        ray2.call_when_changed(obj.update_a_defining_ray)
+        if isinstance(reflex, bool):
+            obj.reflex = reflex
+        obj._explementary_paired = False
         return obj
 
     def __repr__(self) -> str: # pragma: no cover
@@ -428,10 +452,7 @@ class Angle(MeasurableGeometricObject):
         if ray2 is old_ray:
             self.spanning_rays = (ray1, new_ray)
         ray1, ray2 = self.spanning_rays
-        print(f'update_a_defining_ray: orig key: {self.key} -> {" ".join([ray1.pointing_to.key, ray1.vertex.key, ray2.pointing_to.key])}')
         self.update_key(' '.join([ray1.pointing_to.key, ray1.vertex.key, ray2.pointing_to.key]))
-        print(f'update_a_defining_ray: new key: {self.key}')
-        self.print()
         self.remove_duplicates()
 
     @property
@@ -463,19 +484,42 @@ class Angle(MeasurableGeometricObject):
     def measure(self, value):
         """Sets the measure of the angle
         """
-        if value < 180:
-            if self.reflex is True:
-                raise ValueError('Reflex angle measure must be greater than or equal to 180 degrees.')
-            self.reflex = False
-        elif value > 180:
-            if self.reflex is False:
-                raise ValueError('Non-reflex angle measure must be less than or equal to 180 degrees.')
-            self.reflex = True
-        else:
-            if self.reflex is None:
-                self.reflex = False
-        if value >= 360:
-            raise ValueError('Angle measure must be less than 360 degrees.')
-        if value <= 0:
-            raise ValueError('Angle measure must be greater than 0 degrees.')
         MeasurableGeometricObject.measure.fset(self, value)
+        if isinstance(self.measure, sympy.Number):
+            if value < 180:
+                if self.reflex is True:
+                    raise ValueError('Reflex angle must be >= 180 degrees.')
+                self.reflex = False
+            elif value > 180:
+                if self.reflex is False:
+                    raise ValueError('Non-reflex angle must be <= 180 degrees.')
+                self.reflex = True
+            else:
+                if self.reflex is None:
+                    self.reflex = False
+            if value >= 360:
+                raise ValueError('Angle  must be < 360 degrees.')
+            if value <= 0:
+                raise ValueError('Angle must be >  0 degrees.')
+        # self.set_explementary_pair()
+        for obj in [self] + self.objects_measured_by_symbol(value):
+            if not obj._explementary_paired:
+                Expression(obj.measure + obj.explementary.measure - 360)
+                obj._explementary_paired = True
+                obj.explementary._explementary_paired = True
+        # NEXT: Refactor Expression.__init__ to call solve_system() after each expression is added
+
+if __name__ == '__main__':
+    from euclipy.polygon import Triangle
+    from euclipy.core import Expression, RegisteredObject
+    from euclipy.theorems import triangle_angle_sum_theorem, straight_angle_theorem
+    from euclipy.geometricobjects import Angle, Line, Segment
+
+    Line('A B C D E')
+    Segment('A C').measure = 5
+    Segment('C E').measure = 12
+    Segment('B E').measure = 15
+    print(f'Segment("A B").measure = {Segment("A B").measure}')
+    Segment('A B').solve()
+    print(f'Segment("A B").measure = {Segment("A B").measure}')
+    print(f'targets = {RegisteredObject.targets()}')

@@ -1,7 +1,7 @@
 """Classes representing polygons on the Euclidean plane
 """
 from euclipy.core import GeometricObject
-from euclipy.geometricobjects import Segment, Angle, points
+from euclipy.geometricobjects import Segment, Angle, Ray, points
 
 class Polygon(GeometricObject):
     """A polygon represented by its vertices on the Euclidean plane
@@ -24,36 +24,26 @@ class Polygon(GeometricObject):
             raise ValueError('Polygon must have at least 3 points.')
         if cls.__name__ == 'Polygon' and len(pts) == 3:
             return Triangle(pts)
-        canonical_pts = cls.canonical_points(pts)
-        key = ' '.join([pt.key for pt in canonical_pts])
+        pts = cls.canonical_points(pts)
+        key = ' '.join([pt.key for pt in pts])
         registered = cls.get(key)
         if registered:
             return registered
         existing_with_shared_pts = [obj for obj in cls.elements()
-                                    if set(obj.points) == set(canonical_pts)]
+                                    if set(obj.points) == set(pts)]
         if existing_with_shared_pts:
             assert len(existing_with_shared_pts) == 1
             # TODO: Replace with custom error InconsistentConstructionError
-            raise RuntimeError('Polygon inconsistent with existing polygon.')
+            raise RuntimeError(f'Polygon{pts} is inconsistent with {existing_with_shared_pts}.')
         # Create new instance
-        return cls.__construct(key, canonical_pts)
-
-    @classmethod
-    def __construct(cls, key, canonical_pts):
-        obj = super().__new__(cls)
-        obj.key = key
-        obj.points = canonical_pts
-        circular_points = obj.points + obj.points[:2]
-        obj.angles = []
-        for i in range(len(obj.points)):
-            obj.angles.append(
-                Angle((circular_points[i], circular_points[i+1], circular_points[i+2])))
+        obj = super().__new__(cls, key=key)
+        obj.points = pts
+        circular_points = obj.points * 2
         obj.segments = [Segment((p1, p2)) for p1, p2
-                        in zip(obj.points, obj.points[1:] + (obj.points[0],))]
-        # obj._pred = set(obj.segments)
-        # obj._op = cls.__construct
+                        in zip(pts, circular_points[1:])]
+        obj.angles = [Angle((p1, p2, p3)) for p1, p2, p3 in
+                      zip(pts, circular_points[1:], circular_points[2:])]
         return obj
-
 
     def __repr__(self): # pragma: no cover
         return f'{self.__class__.__name__}({" ".join([p.key for p in self.points])})'
@@ -76,8 +66,89 @@ class Triangle(Polygon):
     """A triangle represented by its three vertices on the Euclidean plane
     """
     def __new__(cls, pts):
-        return cls.__construct(points(pts))
+        return super().__new__(cls, pts)
+    
+    def edge_opposite_vertex(self, vertex) -> Segment:
+        """The edge opposite a vertex of the triangle
+        """
+        return Segment(tuple(set(self.points) - set([vertex])))
+    
+    @property
+    def altitudes(self):
+        """The altitudes of the triangle
+        """
+        altitudes = []
+        for vertex in self.points:
+            edge = self.edge_opposite_vertex(vertex)
+            for foot in edge.line.points:
+                if foot == edge.points[0]:
+                    angles_to_check = [Angle((vertex, foot, edge.points[1])),
+                                       Angle((edge.points[1], foot, vertex))]
+                elif foot == edge.points[1]:
+                    angles_to_check = [Angle((vertex, foot, edge.points[0])),
+                                       Angle((edge.points[0], foot, vertex))]
+                else:
+                    angles_to_check = [Angle((vertex, foot, edge.points[0])),
+                                    Angle((vertex, foot, edge.points[1])),
+                                    Angle((edge.points[0], foot, vertex)),
+                                    Angle((edge.points[1], foot, vertex))]
+                if any(angle.measure == 90 for angle in angles_to_check):
+                    altitudes.append(Segment((vertex, foot)))
+        return altitudes
+    
+    @property
+    def medians(self):
+        """The medians of the triangle
+        """
+        medians = []
+        for vertex in self.points:
+            edge = self.edge_opposite_vertex(vertex)
+            for candidate_endpoint in edge.contained_points()[1:-1]:
+                edge_sub1 = Segment((edge.points[0], candidate_endpoint))
+                edge_sub2 = Segment((edge.points[1], candidate_endpoint))
+                if edge_sub1.measure == edge_sub2.measure:
+                    medians.append(Segment((vertex, candidate_endpoint)))
+        return medians
+
+    @property
+    def angle_bisectors(self):
+        """The angle bisectors of the triangle
+        """
+        angle_bisectors = []
+        for vertex in self.points:
+            edge = self.edge_opposite_vertex(vertex)
+            for candidate_endpoint in edge.contained_points()[1:-1]:
+                angle1 = Angle((candidate_endpoint, vertex, edge.points[0]))
+                angle2 = Angle((edge.points[1], vertex, candidate_endpoint))
+                if angle1.measure == angle2.measure:
+                    angle_bisectors.append(Segment((vertex, candidate_endpoint)))
+        return angle_bisectors
+
+    def sub_and_sur_triangles_from_existing_segments(self):
+        new_triangles = set()
+        existing_triangles = set(Triangle.elements())
+        for vertex in self.points:
+            circular_points = self.points * 2
+            v_index = circular_points.index(vertex)
+            other_vertices = circular_points[v_index+1:v_index+3]
+            pts = Ray(tuple(other_vertices)).points_on_line_in_ray_direction()
+            pts = [pt for pt in pts if Segment.search_registry((vertex, pt))] #Lines too
+            new_triangles |= {Triangle((pts[i], pt2, vertex))
+                              for i in range(len(pts)) for pt2 in pts[i+1:]}
+        return list(new_triangles - existing_triangles)
 
     @classmethod
-    def __construct(cls, pts):
-        return super().__new__(cls, pts)
+    def all_sub_and_sur_triangles(cls):
+        triangles = list(cls.elements())
+        existing_triangles = triangles[:]
+        while triangles:
+            triangle = triangles.pop()
+            additions = triangle.sub_and_sur_triangles_from_existing_segments()
+            triangles.extend(additions)
+        new_triangles = cls.elements()
+        return list(set(new_triangles) - set(existing_triangles))
+    
+    @classmethod
+    def type_one_constructions(cls):
+        cls.all_sub_and_sur_triangles()
+

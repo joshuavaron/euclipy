@@ -22,3 +22,12 @@ class SystemOfEquationsError(Exception):
 
     def __str__(self): # pragma: no cover
         return f'{self.description}'
+
+class SubstitutionIntoUnregisteredExpression(Exception):
+    """Attempt to substitute into an expression no longer in the registry
+    """
+    def __init__(self, expr):
+        self.expr = expr
+
+    def __str__(self): # pragma: no cover
+        return f'{self.expr}'

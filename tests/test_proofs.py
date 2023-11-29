@@ -21,7 +21,6 @@ def test_subsegment_sum_theorem():
     Segment('A C').measure = 5
     Segment('C E').measure = 12
     Segment('B E').measure = 15
-    Expression.solve_system()
     assert Segment('A B').measure == 2
 
 def test_triange_angle_sum_theorem():
@@ -29,7 +28,6 @@ def test_triange_angle_sum_theorem():
     Angle('A B C').measure = 60
     Angle('B C A').measure = 50
     theorems.triangle_angle_sum_theorem(Triangle('A B C'))
-    Expression.solve_system()
     assert Angle('C A B').measure == 70
 
 def test_straight_angle_theorem():
@@ -37,7 +35,6 @@ def test_straight_angle_theorem():
     Line('D B E')
     Angle('A B D').measure = 70
     theorems.straight_angle_theorem(Line('A B C'))
-    Expression.solve_system()
     assert Angle('D B C').measure == 110
     assert Angle('C B E').measure == 70
 
@@ -49,5 +46,4 @@ def test_straight_angle_theorem():
     Line('G L')
     Angle('L G F').measure = 90
     theorems.straight_angle_theorem(Line('F G H'))
-    Expression.solve_system()
     assert Angle('H G L').measure == 90

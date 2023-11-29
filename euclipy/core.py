@@ -12,34 +12,40 @@ import collections
 import itertools
 import pprint
 
+import networkx
 import sympy
 
 from euclipy import exceptions
+
+class InfoGraph(networkx.DiGraph):
+    def __init__(self):
+        super().__init__()
+        self.add_node(RegisteredObject('Given'))
+
+    def add_node(self, reg_obj:'RegisteredObject'):
+        super().add_node(repr(reg_obj), obj=reg_obj, cls=reg_obj.__class__.__name__, key=reg_obj.key)
+
+    def add_edge(self, source:'RegisteredObject', target:'RegisteredObject', context:str):
+        super().add_edge(repr(source), repr(target), context=context)
+
+    def add_given(self, given:'RegisteredObject'):
+        self.add_node(given)
+        self.add_edge(RegisteredObject('Given'), given, context='Given')
+
 
 class RegisteredObject:
     """Base class for all euclipy objects that need to be tracked by the central
     registry.
     """
     # Instance methods for initializing/registering and deregistering objects
-    def __new__(cls) -> None:
+    def __new__(cls, key=None) -> None:
         obj = super().__new__(cls)
+        # If object lacks a key, use an automatically generated key instead
         obj._successor = None
+        obj._callbacks = []
+        obj.key = key if key else obj.auto_key()
+        obj.get_registry()[obj.key] = obj
         return obj
-
-    def __init__(self, *_args, **_kwargs) -> None:
-        """Add object to registry if not already registered
-        """
-        # __init__ will still be called after __new__ for subclasses that return
-        # a previously-created object.  In that case, object should not be
-        # initialized/registered again.
-        if not hasattr(self, '_registered'):
-            self._successor = None
-            # If object lacks a key, use an automatically generated key instead
-            if not hasattr(self, '_key'):
-                self.key = self.auto_key()
-            self.register()
-            self._callbacks = []
-            super().__init__()
 
     def __getattribute__(self, name):
         successor = object.__getattribute__(self, '_successor')
@@ -70,12 +76,6 @@ class RegisteredObject:
                     # references to deregistered objects with surviving object
                 pass
 
-    def register(self):
-        """Add object to the registry.
-        """
-        self.get_registry()[self.key] = self
-        self._registered = True
-
     def update_key(self, new_key):
         """Update key for object in registry
         """
@@ -86,7 +86,7 @@ class RegisteredObject:
             else:
                 self.get_registry().pop(self.key)
                 self.key = new_key
-                self.register()
+                self.get_registry()[self.key] = self
                 self.broadcast_change(None)
 
     def broadcast_change(self, successor):
@@ -102,19 +102,31 @@ class RegisteredObject:
         # Set successor and deregister self
         self.get_registry().pop(self.key)
         successor._predecessor = self
-        del self._registered
+        # del self._registered
         self._successor = successor
         # TODO: Should also clean up registry
 
     def call_when_changed(self, callback):
         self._callbacks.append(callback)
 
+    @classmethod
+    def type_one_constructions(cls):
+        for _cls in cls.classes_recursive():
+            if hasattr(_cls, 'type_one_constructions'):
+                _cls.type_one_constructions()
+
+    def solve(self, metric='measure'):
+        RegisteredObject.add_targets([self])
+        self.type_one_constructions()
+
+
+
     # Class methods for class-level registries
 
     @classmethod
     def auto_key(cls):
         """Automatically generate an integer key for an object of cls
-        
+
         Returns:
             Auto-incremented integer key for object, unique only among
             instances of the same class (not unique among subclasses)
@@ -152,6 +164,14 @@ class RegisteredObject:
         own = cls.elements()
         subs = (_.elements_recursive() for _ in cls.__subclasses__())
         return itertools.chain(own, itertools.chain.from_iterable(subs))
+
+    @classmethod
+    def classes_recursive(cls):
+        """Iterator for all registered elements of cls and its subclasses
+        """
+        own = cls.__subclasses__()
+        subs = (_.classes_recursive() for _ in own)
+        return set(itertools.chain(own, itertools.chain.from_iterable(subs)))
 
     @classmethod
     def remove_duplicates(cls):
@@ -198,29 +218,69 @@ class RegisteredObject:
         """
         pprint.pprint(cls.recursive_registry())
 
+    @staticmethod
+    def targets():
+        if '_targets' not in RegisteredObject.__dict__:
+            RegisteredObject._targets = []
+        return RegisteredObject._targets
+    
+    @staticmethod
+    def target_symbols():
+        return {obj.measure for obj in RegisteredObject.targets()
+                if obj.measure.free_symbols}
+    
+    @staticmethod
+    def add_targets(targets):
+        reg_targets = RegisteredObject.targets()
+        new_targets = set(targets) - set(reg_targets)
+        reg_targets.extend(list(new_targets))
+        for target in new_targets:
+            target.solve(metric='measure')
+
+    @staticmethod
+    def add_targets_for_symbols(symbols):
+        targets = {obj for sym in symbols
+                   for obj in MeasurableGeometricObject.objects_measured_by_symbol(sym)}
+        RegisteredObject.add_targets(targets)
+
+    @property
+    def graph(self):
+        if '_graph' not in RegisteredObject.__dict__:
+            RegisteredObject._graph = InfoGraph()
+        return RegisteredObject._graph
+
 
 class Expression(RegisteredObject):
     """Algebraic expressions and functionality to solve system of equations
-    
+
     TODO: It is possible to insert two equivalent expressions into the registry.
     This can be avoided by prempting instantiation and testing for each
     registered non-zero expression e whether sympy.simplify(e.expr - expr) == 0
     """
-    def __new__(cls, expr, predecessor=None, substitutions=None) -> None:
-        del expr, predecessor, substitutions
-        return super().__new__(cls)
-
-    def __init__(self, expr, predecessor=None, substitutions=None) -> None:
+    def __new__(cls, expr, predecessor=None, substitutions=None):
         assert isinstance(expr, sympy.Expr)
-        self.expr = expr
+        # If an expression matching the new expr is already in the registry,
+        # and the new expr has no predecessor,
+        # then simply return the registered expression.
+        expr = sympy.simplify(expr)
+        for e in cls.elements():
+            if predecessor is None and sympy.simplify(e.expr) == expr:
+                return e
+        # Otherwise, create a new expression and return it.
+        obj = super().__new__(cls)
+        obj.expr = expr
         if substitutions:
             assert isinstance(substitutions, dict)
-        self.substitutions = substitutions
+        obj.substitutions = substitutions
         if predecessor:
-            predecessor.replace(successor=self)
+            predecessor.replace(successor=obj)
         else:
-            self._predecessor = None
+            obj._predecessor = None
+        return obj
+
+    def __init__(self, expr, predecessor=None, substitutions=None) -> None:
         super().__init__()
+        Expression.solve_system()
 
     def __getattribute__(self, name):
         return object.__getattribute__(self, name)
@@ -229,27 +289,32 @@ class Expression(RegisteredObject):
     def _identifier(self):
         return self.expr
 
-    def subs(self, replacements):
+    def subs(self, replacements) -> None:
         """Make substitutions from replacements in expression (self.expr)
-        
+
         Args:
             replacements: dict mapping sympy symbols to substitutions, e.g.,
                 {x: 3, y: 5}
-        
+
         Returns:
             If substitution does not change expression, returns self.
             If substitution changes expression, returns new Expression
             with attributes `replaced` and `substitutions`.
-            
+
         Raises:
             SystemOfEquationsError if substitution evaluates to non-zero value
                 without free symbols.
         """
+        if self not in self.elements():
+            raise exceptions.SubstitutionIntoUnregisteredExpression(self)
+        for sym, val in replacements.items():
+            MeasurableGeometricObject.substitute_measure_symbol(sym, sympy.sympify(val))
         result = self.expr.subs(replacements, simultaneous=True)
         if result == self.expr:
-            return self
+            return
         if result == 0 or len(result.free_symbols) > 0:
-            return Expression(result, predecessor=self, substitutions=replacements)
+            Expression(result, predecessor=self, substitutions=replacements)
+            return
         raise exceptions.SystemOfEquationsError('Expression without free \
             symbols cannot evaluate to a non-zero value.')
 
@@ -267,7 +332,7 @@ class Expression(RegisteredObject):
     @classmethod
     def subs_all_expressions(cls, replacements:dict):
         """Make substitutions in replacements in all registered Expressions
-        
+
         Args:
             replacements: dictionary mapping symbols to their replacements
         """
@@ -303,11 +368,9 @@ class Expression(RegisteredObject):
         non_uniques = [dict(non_unique) for non_unique in non_uniques]
         uniques_without_free_symbols = {k:v for k, v in uniques.items()
                                         if not v.free_symbols}
-        # TODO: if v is a free symbol itself, i.e. isinstance(v, sympy.Symbol),
-        # then there is probably value in substituting that as well, because the
-        # substitution would reduce the number of free symbols in the system
-        # and establish measure equalities (i.e. measures represented by the
-        # same symbol)
+        uniques_with_atomic_symbols = {k: v for k, v in uniques.items()
+                                       if isinstance(v, sympy.Atom) and v.free_symbols}
+        # TODO: Write unit test for uniques_with_atomic_symbols
         if not all(e > 0 for e in uniques_without_free_symbols.values()):
             # TODO: If a feature to define new variables as functions of measure
             # symbols is implemented in the future, the following >0 constraint
@@ -328,27 +391,41 @@ class Expression(RegisteredObject):
                 must contain exactly one positive solution for each variable.')
         non_uniques_solution = {k: v.pop() for k, v
                                 in non_uniques_solution_candidate.items()}
-        valid_solutions = uniques_without_free_symbols | non_uniques_solution
+        valid_solutions = uniques_without_free_symbols | non_uniques_solution | uniques_with_atomic_symbols
 
         # Substitute valid_solutions for variables in expressions
         for expr in unsolved:
-            expr = expr.subs(valid_solutions)
-        for sym, val in valid_solutions.items():
-            MeasurableGeometricObject.substitute_measure_symbol(sym, val)
+            if expr in cls.elements():
+                expr.subs(valid_solutions)
+
+        # Find all expressions with symbols that measure targeted objects
+        # Add their free symbols to the set of targets
+        target_symbols = set(RegisteredObject.target_symbols())
+        new_symbols = set()
+        for e in cls.elements():
+            free_symbols = e.expr.free_symbols
+            if free_symbols & target_symbols:
+                new_symbols |= free_symbols - target_symbols
+        RegisteredObject.add_targets_for_symbols(new_symbols)
+
         return valid_solutions
 
 
 class GeometricObject(RegisteredObject):
     """Base class for all geometric objects
     """
+    def __new__(cls, key=None) -> None:
+        obj = super().__new__(cls, key=key)
+        return obj
+
 
 class MeasurableGeometricObject(GeometricObject):
     """Base class for all geometric objects that can be measured
     """
-    def __init__(self, *_args, **_kwargs):
-        if not hasattr(self, '_measure'):
-            self._measure = None
-        super().__init__()
+    def __new__(cls, key=None) -> None:
+        obj = super().__new__(cls, key=key)
+        obj._measure = None
+        return obj
 
     @classmethod
     def auto_measure_symbol(cls):
@@ -360,35 +437,27 @@ class MeasurableGeometricObject(GeometricObject):
         label = f'm{cls.__name__}{cls._auto_measure_symbol_counter}'
         return sympy.Symbol(label)
 
-    @staticmethod
-    def measure_symbol_to_object_map():
-        """Dictionary mapping measure symbols to a list of corresponding objects
+    @classmethod
+    def elements_with_measure(cls, measure_symbol):
+        """Return all objects with measure measure_symbol
         """
-        sym_map = collections.defaultdict(list)
-        for obj in MeasurableGeometricObject.elements_recursive():
-            if obj.has_measure_symbol:
-                sym_map[obj.measure].append(obj)
-        return sym_map
+        if isinstance(measure_symbol, sympy.Atom) and measure_symbol.free_symbols:
+            return [obj for obj in cls.elements_recursive()
+                    if obj.has_measure and obj.measure == measure_symbol]
+        return []
 
-    @staticmethod
-    def substitute_measure_symbol(old_sym, new_sym_or_val):
+    @classmethod
+    def substitute_measure_symbol(cls, sym, val):
         """Substitute solved symbol in all MeasurableGeometricObject measures
         """
-        sym_obj_map = MeasurableGeometricObject.measure_symbol_to_object_map()
-        for obj in sym_obj_map.get(old_sym, []):
-            obj.set_measure(new_sym_or_val)
+        for obj in cls.elements_with_measure(sym):
+            obj.set_measure(val)
 
     @property
     def has_measure(self):
         """Boolean property of measurable objects; True if measure exists
         """
         return self._measure is not None
-
-    @property
-    def has_measure_symbol(self):
-        """Boolean property of measurable objects; True if measure is a symbol
-        """
-        return self.has_measure and isinstance(self.measure, sympy.Symbol)
 
     def set_measure(self, measure=None):
         """Set the measure for object without performing any of the other
@@ -398,7 +467,8 @@ class MeasurableGeometricObject(GeometricObject):
         if measure is None:
             self._measure = self.auto_measure_symbol()
         else:
-            if isinstance(measure, (sympy.Symbol, sympy.Number)):
+            if (isinstance(measure, sympy.Atom) or
+                (isinstance(measure, sympy.Expr) and not measure.free_symbols)):
                 self._measure = measure
             else:
                 raise ValueError(f'Cannot set measure to {measure}.')
@@ -414,34 +484,39 @@ class MeasurableGeometricObject(GeometricObject):
     @measure.setter
     def measure(self, new):
         '''
-        new can be one of the following:
-        - a number (instance of numbers.Numbers)
-        - a sympy number (instnace of sympy.Number)
-        - a sympy symbol (instance of sympy.Symbol)
+        new can be anything that sympy.sympify produces an Expr from
         '''
         #TODO: Add support for different numeric types
         try:
             new = sympy.sympify(new)
         except sympy.SympifyError as exc:
             raise ValueError(f'Cannot set measure to {new}.') from exc
-        if not isinstance(new, (sympy.Symbol, sympy.Number)):
+        if not isinstance(new, sympy.Expr):
             raise ValueError(f'Cannot set measure to {new}.')
 
         if self.has_measure:
             old = self._measure
-            if isinstance(old, sympy.Symbol):
-                self.substitute_measure_symbol(old, new)
-                Expression.subs_all_expressions({old: new})
-            else: # old is a sympy.Number
-                if isinstance(new, sympy.Symbol):
-                    self.substitute_measure_symbol(new, old)
-                    Expression.subs_all_expressions({new: old})
-                elif isinstance(new, sympy.Number):
-                    if new != old:
-                        raise ValueError(f'Cannot set measure to {new}, \
-                            because it is already set to {old}.')
+            if not (old.free_symbols or new.free_symbols):
+                if old != new:
+                    raise ValueError(f'Cannot set measure to {new}, \
+                        because it is already set to {old}.')
+            else:
+                Expression(old - new)
         else:
-            self.set_measure(new)
+            if isinstance(new, sympy.Atom):
+                self.set_measure(new)
+            else:
+                sym = self.measure
+                Expression(sym - new)
+
+    @classmethod
+    def objects_measured_by_symbol(cls, symbol):
+        """Return all objects measured with symbol
+        """
+        if isinstance(symbol, sympy.Symbol):
+            return [obj for obj in cls.elements_recursive()
+                    if obj.has_measure and obj.measure is symbol]
+        return []
 
     def __repr__(self) -> str: # pragma: no cover
         measure = ', measure=' + repr(self.measure) if self.has_measure else ''

@@ -306,8 +306,6 @@ def test_retroactive_intersection_angle_update_after_line_update():
     angle4 = Angle("F G H")
     Line("E F G")
     assert angle3.measure == angle4.measure
-    print(Angle('A B C'))
-    RegisteredObject.print()
 
 def test_measure_substitution_preserves_specific_information():
     obj1 = MeasurableGeometricObject()
@@ -408,18 +406,6 @@ def test_ray_when_its_line_is_modified():
     assert ray._identifier == (Point('A'), Point('F'))
     assert ray.key == 'A F'
 
-# IntersectionAngle tests
-
-# def test_intersection_angle():
-#     L1 = Line('A B')
-#     L2 = Line('A C')
-#     with pytest.raises(ValueError):
-#         IntersectionAngle((L1, 'A C'))
-#     int_ang1 = IntersectionAngle((L1, L2))
-#     int_ang2 = IntersectionAngle((L1, L2))
-#     int_ang3 = IntersectionAngle((L2, L1))
-#     assert int_ang1 is int_ang2
-#     assert int_ang1 is not int_ang3
 
 # Angle tests
 
@@ -443,21 +429,14 @@ def test_expression_subs():
     m1 = Segment('A B').measure
     m2 = Segment('B C').measure
     m3 = Segment('C D').measure
-    e1 = Expression(m1 - 5)
+
+    Expression(m1 - 5)
+    assert Segment('A B').measure == 5
+
     e2 = Expression(m2 * m3 - 8)
-    # If substitution does not change expression, should return self
-    assert e1.subs({m3: 2}) is e1
-    # If substitution produces zero, should return zero
-    assert e1.subs({m1: 5}).expr == 0
-    # If substitution produces an expression with free variables, should return that new expression
-    e3 = e2.subs({m2: 2})
-    assert e3.expr == 2 * m3 - 8
-    assert e2._successor is e3
-    assert e3._predecessor is e2
-    assert e3.substitutions == {m2: 2}
-    # If substitution produces a non-zero constant, should raise SystemOfEquationsError
-    with pytest.raises(exceptions.SystemOfEquationsError):
-        e3.subs({m3: 5})
+    e2.subs({m2: 2})
+    assert Segment('B C').measure == 2
+    assert Segment('C D').measure == 4
 
 def test_expression_subs_all_expressions():
     m1 = Segment('A B').measure
@@ -466,7 +445,10 @@ def test_expression_subs_all_expressions():
     Expression(m1 + m2 - 5)
     Expression(m2 + m3 - 7)
     Expression.subs_all_expressions({m2: 3})
-    assert {e.expr for e in Expression.elements()} == {m1 - 2, m3 - 4}
+    assert Segment('A B').measure == 2
+    assert Segment('B C').measure == 3
+    assert Segment('C D').measure == 4
+    # assert {e.expr for e in Expression.elements()} == {m1 - 2, m3 - 4}
 
 def test_expression_solve():
     m1 = Segment('A B').measure
@@ -475,8 +457,8 @@ def test_expression_solve():
     Expression(m1 + m2 - 5)
     Expression(m2 + m3 - 7)
     Expression(m1 + m3 - 6)
-    solution = Expression.solve_system()
-    assert solution == {m1: 2, m2: 3, m3: 4}
+    # solution = Expression.solve_system()
+    # assert solution == {m1: 2, m2: 3, m3: 4}
     assert Segment('A B').measure == 2
     assert Segment('B C').measure == 3
     assert Segment('C D').measure == 4
@@ -488,33 +470,33 @@ def test_expression_solve_with_no_solutions():
     Expression(m1+m2-5)
     assert Expression.solve_system() == {}
 
+#TODO: Rename test
 def test_substitution_causing_expression_to_evaluate_to_nonzero_raises_exception():
     """When an Expression evaluates to a nonzero value, it should raise an
     exception"""
     segment = Segment('A B')
     Expression(segment.measure-1)
-    with pytest.raises(exceptions.SystemOfEquationsError):
+    # with pytest.raises(exceptions.SystemOfEquationsError):
+    #     segment.measure = 2
+    with pytest.raises(ValueError):
         segment.measure = 2
 
 def test_no_solution_raises_exception():
     m1 = Segment('A B').measure
     m2 = Segment('B C').measure
     Expression(m1 + m2 - 5)
-    Expression(m1 + m2 - 6)
     with pytest.raises(exceptions.SystemOfEquationsError):
-        Expression.solve_system()
+        Expression(m1 + m2 - 6)
 
 def test_non_unique_positive_solutions_raises_exception():
     m1 = Segment('A B').measure
-    Expression((m1 - 5) * (m1 - 6))
     with pytest.raises(exceptions.SystemOfEquationsError):
-        Expression.solve_system()
+        Expression((m1 - 5) * (m1 - 6))
 
 def test_negative_unique_solution_raises_exception():
     m1 = Segment('A B').measure
-    Expression(m1 + 5)
     with pytest.raises(exceptions.SystemOfEquationsError):
-        Expression.solve_system()
+        Expression(m1 + 5)
 
 def test_nonreflex_angles_formed_by_intersection():
     l1 = Line('A B C')
