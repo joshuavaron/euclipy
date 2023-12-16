@@ -1,7 +1,10 @@
 """Implementation of theorems
 """
-from euclipy.core import Expression, RegisteredObject
-from euclipy.geometricobjects import Line, Angle, Ray
+
+import sympy
+
+from euclipy.core import Expression
+from euclipy.geometricobjects import Line, Angle, Segment
 from euclipy.polygon import Triangle
 
 def definition_supplementary_angles(angles: list):
@@ -31,8 +34,7 @@ def subsegment_sum_theorem(line: Line):
     # TODO: Refactor once a more concrete theorem framework is in place.
     segs = line.segments_with_subsegments()
     for seg in segs:
-        Expression(seg.measure -
-                   sum(_.measure for _ in seg.atomic_subsegments()))
+        Expression(seg.measure - sum(_.measure for _ in seg.atomic_subsegments()))
         
 def angle_addition_postulate():
     """Prototype: Insert equations into registry for angle addition postulate
@@ -58,6 +60,44 @@ def herons_formula(triangle: Triangle):
     """
     if not isinstance(triangle, Triangle):
         raise ValueError("Heron's formula requires a triangle")
-    a, b, c = [edge.measure for edge in triangle.edges]
+    a, b, c = [edge.measure for edge in triangle.segments]
     s = (a + b + c) / 2
-    Expression(triangle.area - (s * (s - a) * (s - b) * (s - c)) ** 0.5)
+    A = triangle.area
+    Expression(A**2 - s * (s - a) * (s - b) * (s - c))
+
+def triangle_area_using_altitude(triangle: Triangle, altitude: Segment):
+    """Prototype: Insert equations into registry for triangle area from altitude
+    and base implied by altitude
+    """
+    if not isinstance(triangle, Triangle):
+        raise ValueError("Triangle area from base and altitude requires a Triangle")
+    if not isinstance(altitude, Segment):
+        raise ValueError("Triangle area using altitude requires a Segment")
+    if altitude not in triangle.altitudes:
+        raise ValueError("Triangle area using altitude requires an altitude of the triangle")
+    base_points = set(triangle.points) - set(altitude.points)
+    if 90 not in [angle.measure for angle in triangle.angles]:
+        base = Segment(tuple(base_points))
+        Expression(triangle.area - (base.measure * altitude.measure / 2))
+    else:
+        Expression(triangle.area - (triangle.altitudes[0].measure * triangle.altitudes[1].measure)/2)
+    
+
+def angle_bisector_theorem(triangle: Triangle, bisector: Segment):
+    if not isinstance(triangle, Triangle):
+        raise ValueError("Angle bisector theorem requires a Triangle")
+    if not isinstance(bisector, Segment):
+        raise ValueError("Angle bisector theorem's bisector requires a Segment")
+    if bisector not in triangle.angle_bisectors:
+        raise ValueError("Angle bisector theorem requires an angle bisector of the triangle")
+    points_not_in_bisector = list(set(triangle.points) - set(bisector.points))
+    point_on_bisector = list(set(triangle.points) - set(points_not_in_bisector))
+    bisector_point_not_on_triangle = list(set(bisector.points) - set(point_on_bisector))
+    Expression(Segment((point_on_bisector[0], points_not_in_bisector[0])).measure / Segment((point_on_bisector[0], points_not_in_bisector[1])).measure -
+               Segment((bisector_point_not_on_triangle[0], points_not_in_bisector[0])).measure / Segment((bisector_point_not_on_triangle[0], points_not_in_bisector[1])).measure)
+    
+def pythagorean_theorem(triangle: Triangle):
+    if 90 not in [angle.measure for angle in triangle.angles]:
+        raise ValueError("Pythagorean theorem can only be applied to right triangles")
+    triangle_hypotenuse = list(set(triangle.segments) - set(triangle.altitudes))
+    Expression(triangle.altitudes[0].measure ** 2 + triangle.altitudes[1].measure ** 2 - triangle_hypotenuse[0].measure ** 2)

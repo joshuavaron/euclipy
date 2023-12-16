@@ -1,0 +1,8 @@
+1.1.0 (12/16/2023)
+-------------------
+- Added solve()
+- Added new theorems
+- Added methods in Triangle to identify altitudes and other objects
+- Measures can now be expressions
+- Changed readme
+- General bug fixes

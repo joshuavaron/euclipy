@@ -1,11 +1,16 @@
 """Classes representing polygons on the Euclidean plane
 """
-from euclipy.core import GeometricObject
+import sympy
+
+from euclipy.core import GeometricObject, MeasurableProperty
 from euclipy.geometricobjects import Segment, Angle, Ray, points
 
 class Polygon(GeometricObject):
     """A polygon represented by its vertices on the Euclidean plane
     """
+
+    area = MeasurableProperty(auto_symbol_prefix='Area')
+
     def __new__(cls, pts):
         """Find or construct new Polygon
 

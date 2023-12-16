@@ -9,7 +9,7 @@ Typical usage example:
 
 import functools
 import sympy
-from euclipy.core import GeometricObject, MeasurableGeometricObject, Expression
+from euclipy.core import GeometricObject, Expression, Measure, MeasurableProperty
 import euclipy.exceptions as exceptions
 
 
@@ -303,9 +303,12 @@ class Ray(GeometricObject):
     def __repr__(self):
         return f'Ray({self.vertex.key} {self.pointing_to.key})'
 
-class Segment(MeasurableGeometricObject):
+class Segment(GeometricObject):
     """A segment represented by its two endpoints on the Euclidean plane
     """
+
+    measure = MeasurableProperty(auto_symbol_prefix = 'mSegment')
+
     def __new__(cls, pts):
         '''Argument pts is one of the following:
         - a space separated pair of point labels representing a segment, e.g. 'B A'
@@ -332,14 +335,43 @@ class Segment(MeasurableGeometricObject):
         super().solve(metric)
         if metric == 'measure':
             # TODO: Find a way to avoid importing outside of top level here
-            from euclipy.theorems import subsegment_sum_theorem # pylint: disable=import-outside-toplevel
-            subsegment_sum_theorem(self.line)
-            if not self.measure.free_symbols: # pylint: disable=no-member
+            from euclipy import theorems
+            from euclipy.polygon import Triangle
+            # Try to solve for measure using subsegment sum theorem
+            theorems.subsegment_sum_theorem(self.line)
+            if self.measure.is_number: # pylint: disable=no-member
                 return self.measure
+            # Try to solve for measure using equivalence of area formulas
+            is_altitude_of = [triangle for triangle in Triangle.elements() if self in triangle.altitudes]
+            for triangle in is_altitude_of:
+                theorems.herons_formula(triangle)
+                theorems.triangle_area_using_altitude(triangle, self)
+            if self.measure.is_number: # pylint: disable=no-member
+                return self.measure
+            # Try to solve for measure using angle bisector theorem
+            shares_point_with_angle_bisector_of = []
+            for triangle in Triangle.elements():
+                for bisector in triangle.angle_bisectors:
+                    if (set(self.points) & set(bisector.points)) and self.line is not bisector.line:
+                        shares_point_with_angle_bisector_of.append(triangle)
+            for triangle in shares_point_with_angle_bisector_of:
+                for bisector in triangle.angle_bisectors:
+                    theorems.angle_bisector_theorem(triangle, bisector)
+            if self.measure.is_number: # pylint: disable=no-member
+                return self.measure
+            # Try to solve for measure using pythagorean theorem
+            is_edge_of_right_triangle = [triangle for triangle in Triangle.elements() if self in triangle.segments and
+                                         90 in [angle.measure for angle in triangle.angles]]
+            for triangle in is_edge_of_right_triangle:
+                theorems.pythagorean_theorem(triangle)
+            if self.measure.is_number: # pylint: disable=no-member
+                return self.measure
+            
         else:
             raise ValueError('Invalid metric for Segment.solve()')
 
     def component_of(self):
+        from euclipy.polygon import Triangle
         triangles =  {triangle for triangle in Triangle.elements()
                       if self in triangle.edges}
         supersegments = {segment for segment in Segment.elements()
@@ -402,9 +434,12 @@ class Segment(MeasurableGeometricObject):
                 for i in range(len(seg_pts)-1)]
 
 
-class Angle(MeasurableGeometricObject):
+class Angle(GeometricObject):
     """An angle represented by 3 points on the Euclidean plane
     """
+
+    measure = MeasurableProperty(auto_symbol_prefix='mAngle', post_set='post_set_measure')
+
     def __new__(cls, pts_or_rays, reflex=None): #TODO: Should reflex default to True?
         '''Argument pts is one of the following:
         - a space separated triple of point labels representing an angle, e.g. 'B A C'
@@ -439,9 +474,9 @@ class Angle(MeasurableGeometricObject):
         return obj
 
     def __repr__(self) -> str: # pragma: no cover
-        measure = ', measure=' + repr(self.measure) if self.has_measure else ''
+        measures = ', '.join([f'{k}={m.value}' for k, m in self.measures.items()])
         reflex = ', reflex=' + repr(self.reflex) if self.reflex is not None else ''
-        return f'{self.__class__.__name__}({self.key}{measure}{reflex})'
+        return f'{self.__class__.__name__}({self.key}{", " if measures else ""}{measures}{reflex})'
 
     def update_a_defining_ray(self, old_ray, new_ray):
         if new_ray is None:
@@ -480,11 +515,9 @@ class Angle(MeasurableGeometricObject):
     def explementary(self):
         return Angle(self.spanning_rays[-1::-1])
 
-    @MeasurableGeometricObject.measure.setter
-    def measure(self, value):
-        """Sets the measure of the angle
+    def post_set_measure(self, value):
+        """Executes after MeasurableProperty measure is set
         """
-        MeasurableGeometricObject.measure.fset(self, value)
         if isinstance(self.measure, sympy.Number):
             if value < 180:
                 if self.reflex is True:
@@ -502,7 +535,7 @@ class Angle(MeasurableGeometricObject):
             if value <= 0:
                 raise ValueError('Angle must be >  0 degrees.')
         # self.set_explementary_pair()
-        for obj in [self] + self.objects_measured_by_symbol(value):
+        for obj in [self] + Measure.objects_measured_by(value):
             if not obj._explementary_paired:
                 Expression(obj.measure + obj.explementary.measure - 360)
                 obj._explementary_paired = True
@@ -510,16 +543,4 @@ class Angle(MeasurableGeometricObject):
         # NEXT: Refactor Expression.__init__ to call solve_system() after each expression is added
 
 if __name__ == '__main__':
-    from euclipy.polygon import Triangle
-    from euclipy.core import Expression, RegisteredObject
-    from euclipy.theorems import triangle_angle_sum_theorem, straight_angle_theorem
-    from euclipy.geometricobjects import Angle, Line, Segment
-
-    Line('A B C D E')
-    Segment('A C').measure = 5
-    Segment('C E').measure = 12
-    Segment('B E').measure = 15
-    print(f'Segment("A B").measure = {Segment("A B").measure}')
-    Segment('A B').solve()
-    print(f'Segment("A B").measure = {Segment("A B").measure}')
-    print(f'targets = {RegisteredObject.targets()}')
+    pass

@@ -17,10 +17,17 @@
 
 - Create symbolic geometric objects (Triangle(), Segment(), Point(), etc.)
 
-- Implicitly defines objects created by constructions
+- Gathers implicit information created by previous constructions
 
-- Implicitly gathers implicit information created by previous constructions
+- Solves for unknown measures and expressions
 
+## solve():
+
+  
+
+- Use the solve() function to solve for unknown measures and expressions
+
+- Choose which metric you would like to solve for (measure, area, a ratio, etc.)
   
 
 ## Installation
@@ -36,31 +43,34 @@ pip install euclipy
 ## Sample Code (With Comments):
 
 ```py
-
-from euclipy.core import Expression
-from euclipy.geometricobjects import Line, Segment
-import euclipy.theorems as theorems
-
-  
+# Note: This is an implementation of Problem 17 from the 2016 AMC 12B Competition
+from euclipy.polygon import Triangle
+from euclipy.geometricobjects import Angle, Line, Segment
 
 if  __name__ == '__main__':
-    # Construct a line with colinear points: A, B, C, D, E
-    line = Line('A B C D E')
+    # Create a triangle
+    Triangle('A C B')
 
-    # Define the lengths of line segments lying on line AE
-    Segment('A C').measure = 5
-    Segment('C E').measure = 12
-    Segment('B E').measure = 15
+    # Define lines within the triangle
+    Line('A P Q H')
+    Line('C P E')
+    Line('B Q D')
+    Line('A E B')
+    Line('B H C')
+    Line('C D A')
     
-    # Apply the relevant theorem which creates expressions about the sums of
-    # contiguous subsegments of line segments
-    theorems.subsegment_sum_theorem(line)
-
-    # Solve the system of equations resresented by all of the expressions
-    # created by theorems
-    Expression.solve_system()
-
-    # Verify one of the solutions found
-    print(f"Segment('A B').measure = {Segment('A B').measure}") # 2
-
+    # Define triangle edge measures
+    Segment('A C').measure = 9
+    Segment('C B').measure = 8
+    Segment('A B').measure = 7
+    
+    # Create an altitude of Triangle(ACB)
+    Angle('C H A').measure = 90
+    
+    # Create angle bisectors in Triangle(ACB)
+    Angle('C B D').measure = Angle('D B A').measure
+    Angle('E C B').measure = Angle('A C E').measure
+    
+    # Solve for and print the measure of Segment(PQ)
+    print(Segment('P Q').solve())
 ```

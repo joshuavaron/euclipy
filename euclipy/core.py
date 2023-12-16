@@ -37,6 +37,9 @@ class RegisteredObject:
     """Base class for all euclipy objects that need to be tracked by the central
     registry.
     """
+    
+    type_one_constructions_done = False
+    
     # Instance methods for initializing/registering and deregistering objects
     def __new__(cls, key=None) -> None:
         obj = super().__new__(cls)
@@ -109,15 +112,19 @@ class RegisteredObject:
     def call_when_changed(self, callback):
         self._callbacks.append(callback)
 
-    @classmethod
-    def type_one_constructions(cls):
-        for _cls in cls.classes_recursive():
-            if hasattr(_cls, 'type_one_constructions'):
-                _cls.type_one_constructions()
+    @staticmethod
+    def do_type_one_constructions():
+        if not RegisteredObject.type_one_constructions_done:
+            for _cls in RegisteredObject.classes_recursive():
+                try:
+                    _cls.type_one_constructions()
+                except AttributeError:
+                    pass
+            RegisteredObject.type_one_constructions_done = True
 
     def solve(self, metric='measure'):
         RegisteredObject.add_targets([self])
-        self.type_one_constructions()
+        RegisteredObject.do_type_one_constructions()
 
 
 
@@ -184,8 +191,8 @@ class RegisteredObject:
             dup_objs = dup_objs_list[0]
             retain = dup_objs[0]
             for obj in dup_objs[1:]:
-                if issubclass(type(obj), MeasurableGeometricObject):
-                    obj.measure = retain.measure
+                obj.copy_measures_from(retain)
+                # TODO: Consider refactoring: should replace handle copy_measures_from?
                 obj.replace(retain)
             retain.broadcast_change(None)
             return retain
@@ -226,8 +233,9 @@ class RegisteredObject:
     
     @staticmethod
     def target_symbols():
-        return {obj.measure for obj in RegisteredObject.targets()
-                if obj.measure.free_symbols}
+        return {v.value for obj in RegisteredObject.targets()
+                for k, v in obj.measures.items()
+                if v.value.is_symbol}
     
     @staticmethod
     def add_targets(targets):
@@ -240,7 +248,7 @@ class RegisteredObject:
     @staticmethod
     def add_targets_for_symbols(symbols):
         targets = {obj for sym in symbols
-                   for obj in MeasurableGeometricObject.objects_measured_by_symbol(sym)}
+                   for obj in Measure.objects_measured_by(sym)}
         RegisteredObject.add_targets(targets)
 
     @property
@@ -308,15 +316,15 @@ class Expression(RegisteredObject):
         if self not in self.elements():
             raise exceptions.SubstitutionIntoUnregisteredExpression(self)
         for sym, val in replacements.items():
-            MeasurableGeometricObject.substitute_measure_symbol(sym, sympy.sympify(val))
-        result = self.expr.subs(replacements, simultaneous=True)
+            Measure.substitute_symbol(sym, sympy.sympify(val))
+        result = self.expr.subs(replacements, simultaneous=True).simplify()
         if result == self.expr:
             return
         if result == 0 or len(result.free_symbols) > 0:
             Expression(result, predecessor=self, substitutions=replacements)
             return
-        raise exceptions.SystemOfEquationsError('Expression without free \
-            symbols cannot evaluate to a non-zero value.')
+        raise exceptions.SystemOfEquationsError('Expression without free '
+                                                'symbols cannot evaluate to a non-zero value.')
 
     def __repr__(self) -> str: # pragma: no cover
         if self._predecessor:
@@ -358,7 +366,10 @@ class Expression(RegisteredObject):
         unsolved = [e for e in cls.elements() if e.expr != 0]
         if not unsolved:
             return {}
-        solutions = sympy.solve([e.expr for e in unsolved], dict=True)
+        try:
+            solutions = sympy.solve([e.expr for e in unsolved], dict=True)
+        except NotImplementedError:
+            return {}
         if not solutions:
             raise exceptions.SystemOfEquationsError('Unsolved expressions with no solution.')
         uniques = set.intersection(*[set(sol.items()) for sol in solutions])
@@ -406,8 +417,8 @@ class Expression(RegisteredObject):
             free_symbols = e.expr.free_symbols
             if free_symbols & target_symbols:
                 new_symbols |= free_symbols - target_symbols
-        RegisteredObject.add_targets_for_symbols(new_symbols)
-
+        if new_symbols:
+            RegisteredObject.add_targets_for_symbols(new_symbols)
         return valid_solutions
 
 
@@ -418,109 +429,248 @@ class GeometricObject(RegisteredObject):
         obj = super().__new__(cls, key=key)
         return obj
 
-
-class MeasurableGeometricObject(GeometricObject):
-    """Base class for all geometric objects that can be measured
-    """
-    def __new__(cls, key=None) -> None:
-        obj = super().__new__(cls, key=key)
-        obj._measure = None
-        return obj
-
     @classmethod
-    def auto_measure_symbol(cls):
-        """Automatically generate a measure variable symbol
-        """
-        if '_auto_measure_symbol_counter' not in cls.__dict__:
-            cls._auto_measure_symbol_counter = 0
-        cls._auto_measure_symbol_counter += 1
-        label = f'm{cls.__name__}{cls._auto_measure_symbol_counter}'
-        return sympy.Symbol(label)
-
-    @classmethod
-    def elements_with_measure(cls, measure_symbol):
-        """Return all objects with measure measure_symbol
-        """
-        if isinstance(measure_symbol, sympy.Atom) and measure_symbol.free_symbols:
-            return [obj for obj in cls.elements_recursive()
-                    if obj.has_measure and obj.measure == measure_symbol]
-        return []
-
-    @classmethod
-    def substitute_measure_symbol(cls, sym, val):
-        """Substitute solved symbol in all MeasurableGeometricObject measures
-        """
-        for obj in cls.elements_with_measure(sym):
-            obj.set_measure(val)
+    def class_measures(cls):
+        if '_class_measures' not in vars(cls):
+            cls._class_measures = [k for k, v in vars(cls).items()\
+                                   if isinstance(v, MeasurableProperty)]
+        return cls._class_measures
 
     @property
-    def has_measure(self):
-        """Boolean property of measurable objects; True if measure exists
-        """
-        return self._measure is not None
+    def measures(self):
+        attrs = vars(self)
+        return {key:attrs[key] for key in self.class_measures() if key in attrs}
 
-    def set_measure(self, measure=None):
-        """Set the measure for object without performing any of the other
-        actions that @measure.setter performs. Generally intended for
-        class-internal use.
-        """
-        if measure is None:
-            self._measure = self.auto_measure_symbol()
-        else:
-            if (isinstance(measure, sympy.Atom) or
-                (isinstance(measure, sympy.Expr) and not measure.free_symbols)):
-                self._measure = measure
-            else:
-                raise ValueError(f'Cannot set measure to {measure}.')
-
-    @property
-    def measure(self):
-        """Getter property of measurable objects; creates measure if needed
-        """
-        if not self.has_measure:
-            self.set_measure()
-        return self._measure
-
-    @measure.setter
-    def measure(self, new):
-        '''
-        new can be anything that sympy.sympify produces an Expr from
-        '''
-        #TODO: Add support for different numeric types
-        try:
-            new = sympy.sympify(new)
-        except sympy.SympifyError as exc:
-            raise ValueError(f'Cannot set measure to {new}.') from exc
-        if not isinstance(new, sympy.Expr):
-            raise ValueError(f'Cannot set measure to {new}.')
-
-        if self.has_measure:
-            old = self._measure
-            if not (old.free_symbols or new.free_symbols):
-                if old != new:
-                    raise ValueError(f'Cannot set measure to {new}, \
-                        because it is already set to {old}.')
-            else:
-                Expression(old - new)
-        else:
-            if isinstance(new, sympy.Atom):
-                self.set_measure(new)
-            else:
-                sym = self.measure
-                Expression(sym - new)
-
-    @classmethod
-    def objects_measured_by_symbol(cls, symbol):
-        """Return all objects measured with symbol
-        """
-        if isinstance(symbol, sympy.Symbol):
-            return [obj for obj in cls.elements_recursive()
-                    if obj.has_measure and obj.measure is symbol]
-        return []
+    def copy_measures_from(self, other):
+        if not isinstance(self, other.__class__):
+            raise TypeError(f'Cannot copy measures from {other} to {self}')
+        for key, measure in other.measures.items():
+            setattr(self, key, measure.value)
 
     def __repr__(self) -> str: # pragma: no cover
-        measure = ', measure=' + repr(self.measure) if self.has_measure else ''
-        return f'{self.__class__.__name__}({self.key}{measure})'
+        measures = ', '.join([f'{k}={m.value}' for k, m in self.measures.items()])
+        return f'{self.__class__.__name__}({self.key}{", " if measures else ""}{measures})'
+
+
+# class MeasurableGeometricObject(GeometricObject):
+#     """Base class for all geometric objects that can be measured
+#     """
+#     def __new__(cls, key=None) -> None:
+#         obj = super().__new__(cls, key=key)
+#         obj._measure = None
+#         return obj
+
+#     @classmethod
+#     def auto_measure_symbol(cls):
+#         """Automatically generate a measure variable symbol
+#         """
+#         if '_auto_measure_symbol_counter' not in cls.__dict__:
+#             cls._auto_measure_symbol_counter = 0
+#         cls._auto_measure_symbol_counter += 1
+#         label = f'm{cls.__name__}{cls._auto_measure_symbol_counter}'
+#         return sympy.Symbol(label)
+
+#     @classmethod
+#     def elements_with_measure(cls, measure_symbol):
+#         """Return all objects with measure measure_symbol
+#         """
+#         if isinstance(measure_symbol, sympy.Atom) and measure_symbol.free_symbols:
+#             return [obj for obj in cls.elements_recursive()
+#                     if obj.has_measure and obj.measure == measure_symbol]
+#         return []
+
+#     @classmethod
+#     def substitute_measure_symbol(cls, sym, val):
+#         """Substitute solved symbol in all MeasurableGeometricObject measures
+#         """
+#         for obj in cls.elements_with_measure(sym):
+#             obj.set_measure(val)
+
+#     @property
+#     def has_measure(self):
+#         """Boolean property of measurable objects; True if measure exists
+#         """
+#         return self._measure is not None
+
+#     def set_measure(self, measure=None):
+#         """Set the measure for object without performing any of the other
+#         actions that @measure.setter performs. Generally intended for
+#         class-internal use.
+#         """
+#         if measure is None:
+#             self._measure = self.auto_measure_symbol()
+#         else:
+#             if (isinstance(measure, sympy.Atom) or
+#                 (isinstance(measure, sympy.Expr) and not measure.free_symbols)):
+#                 self._measure = measure
+#             else:
+#                 raise ValueError(f'Cannot set measure to {measure}.')
+
+#     @property
+#     def measure(self):
+#         """Getter property of measurable objects; creates measure if needed
+#         """
+#         if not self.has_measure:
+#             self.set_measure()
+#         return self._measure
+
+#     @measure.setter
+#     def measure(self, new):
+#         '''
+#         new can be anything that sympy.sympify produces an Expr from
+#         '''
+#         #TODO: Add support for different numeric types
+#         try:
+#             new = sympy.sympify(new)
+#         except sympy.SympifyError as exc:
+#             raise ValueError(f'Cannot set measure to {new}.') from exc
+#         if not isinstance(new, sympy.Expr):
+#             raise ValueError(f'Cannot set measure to {new}.')
+
+#         if self.has_measure:
+#             old = self._measure
+#             if not (old.free_symbols or new.free_symbols):
+#                 if old != new:
+#                     raise ValueError(f'Cannot set measure to {new}, \
+#                         because it is already set to {old}.')
+#             else:
+#                 Expression(old - new)
+#         else:
+#             if isinstance(new, sympy.Atom):
+#                 self.set_measure(new)
+#             else:
+#                 sym = self.measure
+#                 Expression(sym - new)
+
+#     @classmethod
+#     def objects_measured_by_symbol(cls, symbol):
+#         """Return all objects measured with symbol
+#         """
+#         if isinstance(symbol, sympy.Symbol):
+#             return [obj for obj in cls.elements_recursive()
+#                     if obj.has_measure and obj.measure is symbol]
+#         return []
+
+#     def __repr__(self) -> str: # pragma: no cover
+#         measure = ', measure=' + repr(self.measure) if self.has_measure else ''
+#         return f'{self.__class__.__name__}({self.key}{measure})'
+
+
+class Measure:
+
+    _sym_to_measure = collections.defaultdict(list)
+    _del_sym_to_measure = collections.defaultdict(list)
+
+    def __init__(self, measured_object, measure_name, valid_value):
+        """valid_value: sympy number or symbol
+        """
+        assert valid_value.is_number or valid_value.is_symbol
+        self.measured_object = measured_object
+        self.name = measure_name
+        self.history = []
+        self._set_value(valid_value)
+
+    def __repr__(self):
+        return(f'Measure(value={self.value}, history={self.history}, '\
+               f'measured_object={self.measured_object})')
+
+    def _set_value(self, valid_value):
+        self.value = valid_value
+        self.history.append(valid_value)
+        if valid_value.is_symbol:
+            Measure._sym_to_measure[valid_value].append(self)
+
+    @staticmethod
+    def measures_with_symbol(sym):
+        return Measure._sym_to_measure.get(sym, [])
+
+    @staticmethod
+    def objects_measured_by(sym):
+        sym_measures = Measure.measures_with_symbol(sym)
+        return [m.measured_object for m in sym_measures]
+
+    @staticmethod
+    def substitute_symbol(sym, val):
+        """Substitute solved symbol in all Measures
+        """
+        measures = Measure.measures_with_symbol(sym)
+        if measures:
+            for measure in measures:
+                measure._set_value(val)
+            Measure._del_sym_to_measure[sym] = Measure._sym_to_measure.pop(sym)
+
+
+class MeasurableProperty:
+
+    _auto_symbol_counter = collections.defaultdict(int)
+
+    def __set_name__(self, owner, name):
+        self.storage_name = name
+
+    def __init__(self, auto_symbol_prefix, pre_set=None, post_set=None):
+        self.auto_symbol_prefix = auto_symbol_prefix
+        self.pre_set = pre_set
+        self.post_set = post_set
+
+    def __get__(self, instance, owner):
+        if self.storage_name not in instance.__dict__:
+            self.create_auto_symbol_measure(instance)
+        return instance.__dict__[self.storage_name].value
+
+    def __set__(self, instance, value):
+        # Convert value to sympy number or symbol, and validate
+        value = self.validate(value)
+
+        # Execute pre_set hook, if any
+        if self.pre_set:
+            getattr(instance, self.pre_set)(value)
+
+        # Create or update underlying Measure
+        if self.storage_name not in instance.__dict__: # i.e. no measure yet
+            # If new value is symbol or number, create a new measure with it
+            if value.is_symbol or value.is_number:
+                self.create_measure(instance, value)
+            # Otherwise (i.e. value is expression)
+            else:
+                new = self.create_auto_symbol_measure(instance)
+                Expression(new.value - value)
+        else: # i.e. instance has a measure already
+            old = instance.__dict__[self.storage_name]
+            if value.is_number and old.value.is_number and value != old.value:
+                error = (f'Cannot change {old.name} for {old.measured_object} '\
+                         f'from {old.value} to {value}')
+                raise ValueError(error)
+            Expression(old.value - value)
+
+        # Execute post_set hook, if any
+        if self.post_set:
+            getattr(instance, self.post_set)(value)
+
+    @staticmethod
+    def validate(value):
+        try:
+            return sympy.sympify(value).simplify()
+        except (sympy.SympifyError, AttributeError):
+            raise ValueError(f'{value} is not a valid number, symbol or '\
+                             f'expression for a measure')
+
+    def create_measure(self, instance, sym_or_val):
+        sym_or_val = self.validate(sym_or_val)
+        if not (sym_or_val.is_symbol or sym_or_val.is_number):
+            raise ValueError(f'{sym_or_val} is not a valid symbol or number '\
+                             f'for a measure')
+        new_measure = Measure(
+            measured_object=instance,
+            measure_name=self.storage_name,
+            valid_value=sym_or_val)
+        instance.__dict__[self.storage_name] = new_measure
+        return new_measure
+
+    def create_auto_symbol_measure(self, instance):
+        prefix = self.auto_symbol_prefix
+        self._auto_symbol_counter[prefix] += 1
+        symbol = f'{prefix}{self._auto_symbol_counter[prefix]}'
+        return self.create_measure(instance, symbol)
 
 if __name__ == '__main__':
     pass

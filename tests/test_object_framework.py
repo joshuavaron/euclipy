@@ -2,7 +2,7 @@
 """
 import pytest
 
-from euclipy.core import RegisteredObject, MeasurableGeometricObject, Expression
+from euclipy.core import RegisteredObject, Expression
 from euclipy.geometricobjects import Point, Segment, Angle, Line, Ray, points
 from euclipy.polygon import Polygon, Triangle
 import euclipy.exceptions as exceptions
@@ -35,9 +35,8 @@ def test_recursive_registry_view():
     """
     Segment('A B')
     expected = (r"{'RegisteredObject': {'GeometricObject': "
-                r"{'MeasurableGeometricObject': "
-                r"{'Segment': {'A B': Segment(A B)}}, "
-                r"'Point': {'A': Point(A), 'B': Point(B)}}}}")
+                r"{'Point': {'A': Point(A), 'B': Point(B)}, "
+                r"'Segment': {'A B': Segment(A B)}}}}")
     assert repr(RegisteredObject.recursive_registry()) == expected
 
 def test_update_key():
@@ -251,21 +250,14 @@ def test_line_merge_with_inconsistent_point_alignment_raises_exception():
     with pytest.raises(exceptions.ColinearPointSequenceError):
         Line('B C A')
 
-def test_replaced_measurable_object_delegates_to_successor():
-    """When a MeasurableGeometricObject is replaced, it should delegate
+def test_replaced_object_with_measure_delegates_to_successor():
+    """When an object with measure is replaced, it should delegate
     its attributes to its successor"""
-    obj1 = MeasurableGeometricObject()
-    obj2 = MeasurableGeometricObject()
+    obj1 = Segment('A B')
+    obj2 = Segment('C D')
     obj1.replace(obj2)
     obj2.measure = 5
     assert obj1.measure == 5
-
-def test_measurable_object_raises_exception_with_invalid_measure():
-    """When a MeasurableGeometricObject is assigned an invalid measure, it
-    should raise an exception"""
-    obj = MeasurableGeometricObject()
-    with pytest.raises(ValueError):
-        obj.set_measure('a')
 
 def test_angle_construction():
     with pytest.raises(ValueError):
@@ -308,22 +300,22 @@ def test_retroactive_intersection_angle_update_after_line_update():
     assert angle3.measure == angle4.measure
 
 def test_measure_substitution_preserves_specific_information():
-    obj1 = MeasurableGeometricObject()
-    obj2 = MeasurableGeometricObject()
+    obj1 = Segment('A B')
+    obj2 = Segment('C D')
     obj1.measure = 5
     obj1.measure = obj2.measure
     assert obj2.measure == 5
 
 def test_measure_substitution_raises_exception_with_inconsistent_information():
-    obj1 = MeasurableGeometricObject()
-    obj2 = MeasurableGeometricObject()
+    obj1 = Segment('A B')
+    obj2 = Segment('C D')
     obj1.measure = 5
     obj2.measure = 6
     with pytest.raises(ValueError):
         obj1.measure = obj2.measure
 
 def test_measure_setter_raises_exception_with_invalid_input():
-    obj = MeasurableGeometricObject()
+    obj = Segment('A B')
     with pytest.raises(ValueError):
         obj.measure = [1, 2, 3]
     with pytest.raises(ValueError):
