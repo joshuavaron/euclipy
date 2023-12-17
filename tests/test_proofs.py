@@ -6,6 +6,7 @@ import euclipy.theorems as theorems
 from euclipy.core import Expression, RegisteredObject
 from euclipy.geometricobjects import Line, Segment, Angle
 from euclipy.polygon import Triangle
+import sympy
 
 @pytest.fixture(autouse=True)
 def reset_registry():
@@ -47,3 +48,23 @@ def test_straight_angle_theorem():
     Angle('L G F').measure = 90
     theorems.straight_angle_theorem(Line('F G H'))
     assert Angle('H G L').measure == 90
+
+def test_2016_amc12b_problem_17():
+    Triangle('A C B')
+
+    Line('A P Q H')
+    Line('C P E')
+    Line('B Q D')
+    Line('A E B')
+    Line('B H C')
+    Line('C D A')
+
+    Segment('A C').measure = 9
+    Segment('C B').measure = 8
+    Segment('A B').measure = 7
+
+    Angle('C H A').measure = 90
+
+    Angle('C B D').measure = Angle('D B A').measure
+    Angle('E C B').measure = Angle('A C E').measure
+    assert Segment('P Q').solve() == sympy.sympify('8*sqrt(5)/15')
