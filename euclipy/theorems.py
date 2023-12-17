@@ -63,7 +63,9 @@ def herons_formula(triangle: Triangle):
     a, b, c = [edge.measure for edge in triangle.segments]
     s = (a + b + c) / 2
     A = triangle.area
-    Expression(A**2 - s * (s - a) * (s - b) * (s - c))
+    expr = (A**2 - s * (s - a) * (s - b) * (s - c)).simplify()
+    if len(expr.free_symbols & {a, b, c}) <= 1:
+        Expression(expr)
 
 def triangle_area_using_altitude(triangle: Triangle, altitude: Segment):
     """Prototype: Insert equations into registry for triangle area from altitude
