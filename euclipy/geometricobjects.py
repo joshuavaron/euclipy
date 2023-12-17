@@ -371,7 +371,6 @@ class Segment(GeometricObject):
             raise ValueError('Invalid metric for Segment.solve()')
 
     def component_of(self):
-        from euclipy.polygon import Triangle
         triangles =  {triangle for triangle in Triangle.elements()
                       if self in triangle.edges}
         supersegments = {segment for segment in Segment.elements()
@@ -543,4 +542,75 @@ class Angle(GeometricObject):
         # NEXT: Refactor Expression.__init__ to call solve_system() after each expression is added
 
 if __name__ == '__main__':
-    pass
+    from euclipy.polygon import Triangle
+    from euclipy.core import Expression, RegisteredObject
+    from euclipy.theorems import triangle_angle_sum_theorem, straight_angle_theorem
+    from euclipy.geometricobjects import Angle, Line, Segment
+
+    # # Test 1
+    # Line('A B C D E')
+    # Segment('A C').measure = 5
+    # Segment('C E').measure = 12
+    # Segment('B E').measure = 15
+    # print(f'Segment("A B").measure = {Segment("A B").measure}')
+    # Segment('A B').solve()
+    # print(f'Segment("A B").measure = {Segment("A B").measure}')
+    # print(f'targets = {RegisteredObject.targets()}')
+
+    # Triangle('A C B')
+    # Line('B H C')
+    # Line('A P Q H')
+    # Segment('A P').measure = 1
+    # Segment('Q H').measure = 1
+    # Segment('C A').measure = 9
+    # Segment('C B').measure = 8
+    # Segment('A B').measure = 7
+    # Angle('C H A').measure = 90
+    # Segment('P Q').solve()
+    # RegisteredObject.print()
+    # print(f'Segment("B C").measure = {Segment("P Q").measure}')
+
+    # Triangle('A B C')
+    # Line('A D C')
+    # Line('B D')
+    # Angle('A B D').measure = Angle('D B C').measure
+    # Segment('A B').measure = 5
+    # Segment('C B').measure = 5
+    # Segment('A D').measure = 3
+    # Segment('D C').solve()
+    # RegisteredObject.print()
+
+    Triangle('A C B')
+
+    
+    # Triangle('A H B')
+    # Triangle('A C H')
+    
+
+    Line('A P Q H')
+    Line('C P E')
+    Line('B Q D')
+    Line('A E B')
+    Line('B H C')
+    Line('C D A')
+
+    Segment('A C').measure = 9
+    Segment('C B').measure = 8
+    Segment('A B').measure = 7
+
+    Angle('C H A').measure = 90
+
+    Angle('C B D').measure = Angle('D B A').measure
+    Angle('E C B').measure = Angle('A C E').measure
+    # Triangle.all_sub_and_sur_triangles()
+    try:
+        print(Segment('P Q').solve())
+    except Exception as e:
+        RegisteredObject.print()
+        raise e
+
+    RegisteredObject.print()
+    print('Targets:')
+    print(RegisteredObject.targets())
+    print("Target symbols:")
+    print(RegisteredObject.target_symbols())

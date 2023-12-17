@@ -156,4 +156,3 @@ class Triangle(Polygon):
     @classmethod
     def type_one_constructions(cls):
         cls.all_sub_and_sur_triangles()
-
