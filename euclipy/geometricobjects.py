@@ -371,6 +371,7 @@ class Segment(GeometricObject):
             raise ValueError('Invalid metric for Segment.solve()')
 
     def component_of(self):
+        from euclipy.polygon import Triangle
         triangles =  {triangle for triangle in Triangle.elements()
                       if self in triangle.edges}
         supersegments = {segment for segment in Segment.elements()
